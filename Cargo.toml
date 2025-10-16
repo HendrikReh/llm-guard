@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "crates/llm-guard-cli",
+    "crates/llm-guard-cli", "crates/llm-guard-core",
 ]
 resolver = "2"
 
@@ -24,3 +24,4 @@ thiserror = "1"
 config = "0.13"
 humantime = "2"
 tokio = { version = "1", features = ["rt", "macros"] }
+async-trait = "0.1"
