@@ -1,0 +1,10 @@
+name: CI (placeholder)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  todo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "TODO: configure fmt, lint, test, deny, audit pipelines"

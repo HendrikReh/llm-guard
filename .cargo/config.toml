@@ -1,0 +1,14 @@
+[alias]
+fmt = "fmt --all"
+lint = "clippy --workspace --all-targets --all-features -D warnings"
+test-all = "test --workspace --all-features"
+cov = "llvm-cov --workspace --ignore-filename-regex '(.cargo|.git|/tests?/)' --html"
+audit = "audit"
+deny = "deny check"
+udeps = "udeps --workspace"
+
+[build]
+rustflags = ["-Dwarnings"]
+
+[term]
+color = "auto"
