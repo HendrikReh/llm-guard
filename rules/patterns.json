@@ -1,0 +1,15 @@
+[
+  {
+    "id": "CODE_INJECTION",
+    "description": "Embedded code execution attempts",
+    "pattern": "(?i)(?:run|execute)\\s+(?:bash|python|powershell)",
+    "weight": 45,
+    "window": 80
+  },
+  {
+    "id": "MODEL_OVERRIDE",
+    "description": "Requests to rewrite or ignore system instructions",
+    "pattern": "(?i)pretend\\s+you\\s+are\\s+a\\s+developer",
+    "weight": 30
+  }
+]

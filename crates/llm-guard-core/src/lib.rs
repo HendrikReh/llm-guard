@@ -1,6 +1,7 @@
 pub mod scanner;
 
 pub use scanner::{
-    Finding, FindingValidationError, LlmVerdict, RiskBand, Rule, RuleKind, RuleValidationError,
-    ScanReport, Span,
+    file_repository::FileRuleRepository, Finding, FindingValidationError, LlmVerdict, RiskBand,
+    Rule, RuleKind, RuleRepository, RuleValidationError, ScanReport, Scanner, Span,
+    VerdictProvider,
 };

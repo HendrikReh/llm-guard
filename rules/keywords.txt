@@ -1,0 +1,4 @@
+# id|weight|description|pattern
+INSTR_OVERRIDE|25|Attempts to override system instructions|ignore previous instructions
+DATA_EXFIL|35|Attempts to obtain secrets or credentials|api key
+OBFUSCATION|20|Signals of obfuscation or hidden intent|zero-width space

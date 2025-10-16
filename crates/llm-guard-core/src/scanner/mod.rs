@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Byte span within the scanned text `(start, end)` where `start <= end`.
+pub mod file_repository;
+
 pub type Span = (usize, usize);
 
 /// Classification buckets for overall risk scoring.
