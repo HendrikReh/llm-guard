@@ -22,6 +22,10 @@ impl LlmSettings {
     const RETRIES_ENV: &'static str = "LLM_GUARD_MAX_RETRIES";
     const API_VERSION_ENV: &'static str = "LLM_GUARD_API_VERSION";
 
+    pub fn provider_kind(&self) -> Result<super::ProviderKind> {
+        super::ProviderKind::from_provider(&self.provider)
+    }
+
     /// Load settings from environment variables.
     ///
     /// * `LLM_GUARD_PROVIDER` — Provider identifier (default: `openai`).

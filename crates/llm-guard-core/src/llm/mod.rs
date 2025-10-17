@@ -2,6 +2,7 @@ mod anthropic;
 mod azure;
 mod gemini;
 mod openai;
+mod rig_adapter;
 mod settings;
 
 use anyhow::{bail, Result};
@@ -38,12 +39,36 @@ impl LlmClient for NoopLlmClient {
 }
 
 pub fn build_client(settings: &LlmSettings) -> Result<Box<dyn LlmClient>> {
-    match settings.provider.to_lowercase().as_str() {
-        "noop" => Ok(Box::new(NoopLlmClient::default())),
-        "openai" | "open-ai" => Ok(Box::new(OpenAiClient::new(settings)?)),
-        "azure" | "azure-openai" => Ok(Box::new(AzureOpenAiClient::new(settings)?)),
-        "anthropic" | "claude" => Ok(Box::new(AnthropicClient::new(settings)?)),
-        "gemini" | "google" | "google-gemini" => Ok(Box::new(GeminiClient::new(settings)?)),
-        other => bail!("unsupported LLM provider `{}`", other),
+    match ProviderKind::from_provider(settings.provider.trim())? {
+        ProviderKind::Noop => Ok(Box::new(NoopLlmClient::default())),
+        ProviderKind::OpenAi => Ok(Box::new(OpenAiClient::new(settings)?)),
+        ProviderKind::Azure => Ok(Box::new(AzureOpenAiClient::new(settings)?)),
+        ProviderKind::Anthropic => Ok(Box::new(AnthropicClient::new(settings)?)),
+        ProviderKind::Gemini => Ok(Box::new(GeminiClient::new(settings)?)),
+        ProviderKind::Rig => rig_adapter::RigLlmClient::from_settings(settings),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderKind {
+    Noop,
+    OpenAi,
+    Azure,
+    Anthropic,
+    Gemini,
+    Rig,
+}
+
+impl ProviderKind {
+    pub fn from_provider(name: &str) -> Result<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "noop" => Ok(ProviderKind::Noop),
+            "openai" | "open-ai" => Ok(ProviderKind::OpenAi),
+            "azure" | "azure-openai" => Ok(ProviderKind::Azure),
+            "anthropic" | "claude" => Ok(ProviderKind::Anthropic),
+            "gemini" | "google" | "google-gemini" => Ok(ProviderKind::Gemini),
+            "rig" | "rag" => Ok(ProviderKind::Rig),
+            other => bail!("unsupported LLM provider `{}`", other),
+        }
     }
 }
