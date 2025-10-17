@@ -84,6 +84,21 @@ RUST_LOG=debug cargo test -- --nocapture
 cargo watch -x test
 ```
 
+### Provider Health Checks
+
+```bash
+# Run live health checks against configured providers (requires valid API keys)
+cargo run --bin llm-guard-cli -- health --providers-config llm_providers.yaml --provider openai
+cargo run --bin llm-guard-cli -- health --providers-config llm_providers.yaml --provider anthropic
+cargo run --bin llm-guard-cli -- health --providers-config llm_providers.yaml --provider gemini
+
+# Dry-run configuration validation (no external API calls)
+cargo run --bin llm-guard-cli -- health --providers-config llm_providers.yaml --dry-run
+
+# Add --debug to emit raw provider payloads when parsing fails
+cargo run --bin llm-guard-cli -- health --providers-config llm_providers.yaml --provider anthropic --debug
+```
+
 ### Selective Test Execution
 
 ```bash
@@ -195,15 +210,21 @@ fn scan_report_clamps_scores() {
   - Test verdict merging into ScanReport
   - No actual API calls (uses noop/mock adapter)
 
-**Example Test Scenario:**
+**Example Test Scenarios:**
 ```bash
 # Build CLI binary first
 cargo build
 
-# Run integration test
+# Run integration test with noop provider
 ./target/debug/llm-guard-cli scan --file samples/test.txt --with-llm
 
-# Expected: Clean exit, report generated, noop verdict included
+# Test with provider profiles configuration
+cargo run --bin llm-guard-cli -- \
+  --providers-config llm_providers.yaml \
+  scan --with-llm --provider anthropic \
+  --file examples/chat.txt
+
+# Expected: Clean exit, report generated, verdict included
 ```
 
 **Run:** `cargo test --test '*'`

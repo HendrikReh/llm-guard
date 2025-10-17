@@ -18,6 +18,7 @@ tracing.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
 rig-core = "0.22.0"
+json5.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

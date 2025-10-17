@@ -4,10 +4,12 @@ use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use rig::client::CompletionClient;
 use rig::completion::message::AssistantContent;
-use rig::completion::CompletionModelDyn;
+use rig::completion::{CompletionError, CompletionModelDyn};
 use rig::providers::azure::AzureOpenAIAuth;
 use rig::providers::{anthropic, azure, gemini, openai};
 use serde::Deserialize;
+use serde_json::json;
+use std::env;
 
 const DEFAULT_OPENAI_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_ANTHROPIC_MODEL: &str = "claude-3-5-sonnet-latest";
@@ -18,8 +20,9 @@ const SYSTEM_PROMPT: &str = "You are an application security assistant. Analyze 
 
 struct RigCompletionConfig {
     provider_label: &'static str,
-    temperature: f64,
+    temperature: Option<f64>,
     max_tokens: u64,
+    force_json_mime: bool,
 }
 
 pub struct RigLlmClient {
@@ -60,7 +63,7 @@ impl RigLlmClient {
         let model: Box<dyn CompletionModelDyn + Send + Sync> =
             Box::new(client.completion_model(&model_id));
 
-        Ok(Self::from_model(model, "openai", model_id))
+        Ok(Self::from_model(model, "openai", model_id, None, false))
     }
 
     fn new_anthropic(settings: &LlmSettings) -> Result<Self> {
@@ -88,7 +91,13 @@ impl RigLlmClient {
         let model: Box<dyn CompletionModelDyn + Send + Sync> =
             Box::new(client.completion_model(&model_id));
 
-        Ok(Self::from_model(model, "anthropic", model_id))
+        Ok(Self::from_model(
+            model,
+            "anthropic",
+            model_id,
+            Some(TEMPERATURE),
+            false,
+        ))
     }
 
     fn new_gemini(settings: &LlmSettings) -> Result<Self> {
@@ -113,7 +122,7 @@ impl RigLlmClient {
         let model: Box<dyn CompletionModelDyn + Send + Sync> =
             Box::new(client.completion_model(&model_id));
 
-        Ok(Self::from_model(model, "gemini", model_id))
+        Ok(Self::from_model(model, "gemini", model_id, None, true))
     }
 
     fn new_azure(settings: &LlmSettings) -> Result<Self> {
@@ -149,20 +158,29 @@ impl RigLlmClient {
         let model: Box<dyn CompletionModelDyn + Send + Sync> =
             Box::new(client.completion_model(&deployment));
 
-        Ok(Self::from_model(model, "azure", deployment))
+        Ok(Self::from_model(
+            model,
+            "azure",
+            deployment,
+            Some(TEMPERATURE),
+            false,
+        ))
     }
 
     fn from_model(
         model: Box<dyn CompletionModelDyn + Send + Sync>,
         provider_label: &'static str,
         model_id: String,
+        temperature: Option<f64>,
+        force_json_mime: bool,
     ) -> Self {
         Self {
             model,
             config: RigCompletionConfig {
                 provider_label,
-                temperature: TEMPERATURE,
+                temperature,
                 max_tokens: MAX_OUTPUT_TOKENS,
+                force_json_mime,
             },
             model_id,
         }
@@ -173,54 +191,102 @@ impl RigLlmClient {
 impl LlmClient for RigLlmClient {
     async fn enrich(&self, input: &str, report: &ScanReport) -> Result<LlmVerdict> {
         let prompt = format!(
-            "Input excerpt:\n{}\n\nScore: {:.1} ({:?})\nTop findings: {}\n",
+            "You are validating a prompt injection scan. Respond strictly with a JSON object using keys 'label', 'rationale', and 'mitigation'.\nInput excerpt:\n{}\n\nScore: {:.1} ({:?})\nTop findings: {}\n",
             truncate(input, 2000),
             report.risk_score,
             report.risk_band,
             serde_json::to_string(&report.findings).unwrap_or_default()
         );
 
-        let request = self
+        let mut builder = self
             .model
             .completion_request(prompt.into())
             .preamble(SYSTEM_PROMPT.to_string())
-            .temperature(self.config.temperature)
-            .max_tokens(self.config.max_tokens)
-            .build();
+            .max_tokens(self.config.max_tokens);
 
-        let response = self.model.completion(request).await.with_context(|| {
-            format!(
-                "rig {} completion request failed for model {}",
-                self.config.provider_label, self.model_id
-            )
-        })?;
+        if let Some(temp) = self.config.temperature {
+            builder = builder.temperature(temp);
+        }
 
-        let content = response
-            .choice
+        if self.config.force_json_mime {
+            builder = builder.additional_params(json!({
+                "generationConfig": {
+                    "responseMimeType": "application/json"
+                }
+            }));
+        }
+
+        if self.config.provider_label == "openai" {
+            builder = builder.additional_params(json!({
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "verdict",
+                        "strict": false,
+                        "schema": verdict_json_schema()
+                    }
+                }
+            }));
+        }
+
+        let request = builder.build();
+
+        let response = match self.model.completion(request).await {
+            Ok(response) => response,
+            Err(CompletionError::ResponseError(text))
+                if text.contains("no message") && text.contains("empty") =>
+            {
+                tracing::warn!(
+                    "rig {} completion returned empty response; falling back",
+                    self.config.provider_label
+                );
+                return Ok(fallback_verdict(self.config.provider_label));
+            }
+            Err(err) => {
+                let failure: Result<_, CompletionError> = Err(err);
+                return failure.with_context(|| {
+                    format!(
+                        "rig {} completion request failed for model {}",
+                        self.config.provider_label, self.model_id
+                    )
+                });
+            }
+        };
+
+        let choice = response.choice;
+
+        let content = choice
+            .clone()
             .into_iter()
             .filter_map(|segment| match segment {
                 AssistantContent::Text(text) => Some(text.text),
                 AssistantContent::Reasoning(reasoning) => Some(reasoning.reasoning.join("\n")),
-                AssistantContent::ToolCall(_) => None,
+                AssistantContent::ToolCall(tool) => {
+                    serde_json::to_string(&tool.function.arguments).ok()
+                }
             })
             .filter(|value| !value.trim().is_empty())
             .collect::<Vec<_>>()
             .join("\n");
 
-        if content.trim().is_empty() {
-            bail!(
-                "rig {} response did not return textual content",
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            debug_log_choice(self.config.provider_label, &choice);
+            // Gemini/OpenAI callbacks sometimes omit textual content while returning metadata only.
+            // In that case we produce a fallback verdict instead of treating it as an error.
+            tracing::warn!(
+                "rig {} response did not include textual content; returning fallback verdict",
                 self.config.provider_label
             );
+            return Ok(fallback_verdict(self.config.provider_label));
         }
 
-        let trimmed = content.trim();
-        let verdict: ModelVerdict = serde_json::from_str(trimmed).with_context(|| {
-            format!(
-                "rig {} response from model {} was not valid JSON verdict: {}",
-                self.config.provider_label, self.model_id, trimmed
-            )
-        })?;
+        let json_payload = extract_json_payload(trimmed);
+        let verdict = parse_verdict_json(&json_payload, self.config.provider_label, &self.model_id)
+            .or_else(|err| {
+                debug_log_choice(self.config.provider_label, &choice);
+                Err(err)
+            })?;
 
         Ok(LlmVerdict {
             label: verdict.label,
@@ -237,11 +303,189 @@ struct ModelVerdict {
     mitigation: String,
 }
 
+fn fallback_verdict(provider: &str) -> LlmVerdict {
+    LlmVerdict {
+        label: "unknown".into(),
+        rationale: format!(
+            "Provider `{}` returned no textual content; health check recorded response metadata only.",
+            provider
+        ),
+        mitigation: "Inspect provider logs or retry with a model that emits textual output.".into(),
+    }
+}
+
+fn parse_verdict_json(payload: &str, provider_label: &str, model_id: &str) -> Result<ModelVerdict> {
+    match serde_json::from_str::<ModelVerdict>(payload) {
+        Ok(verdict) => Ok(verdict),
+        Err(_first_err) => {
+            let sanitized = sanitize_json_strings(payload);
+            if sanitized != payload {
+                if let Ok(verdict) = serde_json::from_str::<ModelVerdict>(&sanitized) {
+                    return Ok(verdict);
+                }
+            }
+
+            let value: serde_json::Value = match json5::from_str(&sanitized) {
+                Ok(value) => value,
+                Err(_) => {
+                    debug_log_payload(provider_label, payload);
+                    tracing::warn!(
+                        "rig {} response from model {} could not be parsed even with relaxed JSON; using fallback",
+                        provider_label, model_id
+                    );
+                    return Ok(fallback_model_verdict(provider_label));
+                }
+            };
+            match serde_json::from_value(value) {
+                Ok(verdict) => Ok(verdict),
+                Err(_) => {
+                    debug_log_payload(provider_label, payload);
+                    tracing::warn!(
+                        "rig {} response from model {} could not be coerced into verdict schema; using fallback",
+                        provider_label, model_id
+                    );
+                    Ok(fallback_model_verdict(provider_label))
+                }
+            }
+        }
+    }
+}
+
+fn fallback_model_verdict(provider: &str) -> ModelVerdict {
+    ModelVerdict {
+        label: "unknown".into(),
+        rationale: format!(
+            "Provider `{}` returned a verdict that could not be parsed into the expected JSON structure.",
+            provider
+        ),
+        mitigation: "Review provider output or adjust prompt/response parsing schema.".into(),
+    }
+}
+
+fn verdict_json_schema() -> serde_json::Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "rationale", "mitigation"],
+        "properties": {
+            "label": {
+                "type": "string",
+                "enum": ["safe", "suspicious", "malicious", "unknown"]
+            },
+            "rationale": { "type": "string" },
+            "mitigation": { "type": "string" }
+        }
+    })
+}
+
+fn sanitize_json_strings(payload: &str) -> String {
+    let mut result = String::with_capacity(payload.len());
+    let mut in_string = false;
+    let mut escape = false;
+
+    for ch in payload.chars() {
+        if in_string {
+            if escape {
+                result.push(ch);
+                escape = false;
+            } else {
+                match ch {
+                    '\\' => {
+                        result.push(ch);
+                        escape = true;
+                    }
+                    '"' => {
+                        result.push(ch);
+                        in_string = false;
+                    }
+                    '\n' => {
+                        result.push('\\');
+                        result.push('n');
+                    }
+                    _ => result.push(ch),
+                }
+            }
+        } else {
+            result.push(ch);
+            if ch == '"' {
+                in_string = true;
+            }
+        }
+    }
+
+    if in_string {
+        result.push('"');
+    }
+
+    let open_braces = result.chars().filter(|&c| c == '{').count();
+    let close_braces = result.chars().filter(|&c| c == '}').count();
+    for _ in close_braces..open_braces {
+        result.push('}');
+    }
+
+    let open_brackets = result.chars().filter(|&c| c == '[').count();
+    let close_brackets = result.chars().filter(|&c| c == ']').count();
+    for _ in close_brackets..open_brackets {
+        result.push(']');
+    }
+
+    result
+}
+
+fn debug_log_payload(provider: &str, payload: &str) {
+    if debug_enabled() {
+        tracing::warn!("rig {} raw verdict payload: {}", provider, payload);
+    }
+}
+
+fn debug_enabled() -> bool {
+    matches!(env::var("LLM_GUARD_DEBUG"), Ok(val) if !val.is_empty() && val != "0")
+}
+
+fn debug_log_choice(provider: &str, choice: &rig::OneOrMany<AssistantContent>) {
+    if !debug_enabled() {
+        return;
+    }
+
+    match serde_json::to_string_pretty(choice) {
+        Ok(json) => tracing::warn!("rig {} assistant choice payload: {}", provider, json),
+        Err(err) => tracing::warn!(
+            "rig {} assistant choice payload could not be serialised: {}",
+            provider,
+            err
+        ),
+    }
+}
+
 fn truncate(input: &str, max_chars: usize) -> String {
     if input.chars().count() <= max_chars {
         return input.to_string();
     }
     input.chars().take(max_chars).collect::<String>() + "…"
+}
+
+fn extract_json_payload(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Some(stripped) = strip_code_fence(trimmed) {
+        return stripped;
+    }
+    trimmed.to_string()
+}
+
+fn strip_code_fence(input: &str) -> Option<String> {
+    let mut trimmed = input.trim();
+    if !trimmed.starts_with("```") {
+        return None;
+    }
+    trimmed = trimmed.trim_start_matches("```");
+    trimmed = trimmed.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    if let Some(rest) = trimmed.strip_prefix("json") {
+        trimmed = rest.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    }
+    trimmed = trimmed.trim_start_matches('\n');
+    let end = trimmed.rfind("```").unwrap_or(trimmed.len());
+    let fenced = &trimmed[..end];
+    Some(fenced.trim().to_string())
 }
 
 #[cfg(test)]
@@ -331,5 +575,36 @@ mod tests {
             .err()
             .expect("missing deployment should error");
         assert!(err.to_string().to_lowercase().contains("deployment"));
+    }
+
+    #[test]
+    fn extract_json_handles_code_fence() {
+        let raw = "```json\n{\"label\":\"safe\"}\n```";
+        let sanitized = extract_json_payload(raw);
+        assert_eq!(sanitized, "{\"label\":\"safe\"}");
+    }
+
+    #[test]
+    fn fallback_verdict_produces_unknown_label() {
+        let verdict = fallback_verdict("openai");
+        assert_eq!(verdict.label, "unknown");
+        assert!(verdict.rationale.contains("openai"));
+    }
+
+    #[test]
+    fn parse_verdict_allows_multiline_strings() {
+        let payload = "{\n  \"label\": \"safe\",\n  \"rationale\": \"Line one\nLine two\",\n  \"mitigation\": \"None\"\n}";
+        let verdict = parse_verdict_json(payload, "anthropic", "test-model")
+            .expect("should parse multiline JSON payload");
+        assert_eq!(verdict.label, "safe");
+        assert!(verdict.rationale.contains("Line two"));
+    }
+
+    #[test]
+    fn sanitize_closes_unterminated_strings() {
+        let payload = "{\n  \"mitigation\": \"Line one\nLine two";
+        let sanitized = sanitize_json_strings(payload);
+        assert!(sanitized.ends_with("\"}"));
+        assert!(sanitized.contains("\\n"));
     }
 }

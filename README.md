@@ -8,7 +8,6 @@
 
 **LLM Provider Support:**
 [![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://openai.com)
-[![Azure OpenAI](https://img.shields.io/badge/Azure_OpenAI-0078D4?logo=microsoft-azure&logoColor=white)](https://azure.microsoft.com/en-us/products/ai-services/openai-service)
 [![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://anthropic.com)
 [![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev)
 
@@ -42,10 +41,15 @@ A fast, explainable **Rust** CLI that scans prompts and logs for **prompt-inject
   - [Detection Strategy](#detection-strategy)
 - [Project Documentation](#project-documentation)
 - [AI-Assisted Development Insights](#ai-assisted-development-insights)
-  - [Development Workflow (Hendrik's Approach)](#development-workflow-hendriks-approach)
+  - [Development Workflow](#development-workflow)
+    - [1. Requirements & Planning Phase](#1-requirements--planning-phase)
+    - [2. Development Environment Setup](#2-development-environment-setup)
+    - [3. Coding & Implementation](#3-coding--implementation)
+    - [4. Review & Version Control](#4-review--version-control)
   - [What Worked Well](#what-worked-well)
   - [Challenges & Learnings](#challenges--learnings)
-  - [Recommendations for AI-Assisted Projects](#recommendations-for-ai-assisted-projects)
+- [Recommendations for AI-Assisted Projects](#recommendations-for-ai-assisted-projects)
+- [Provider Integration Pitfalls & Fixes](#provider-integration-pitfalls--fixes)
 - [Contributing](#contributing)
   - [How to Contribute](#how-to-contribute)
 - [License & Disclaimer](#license--disclaimer)
@@ -83,19 +87,23 @@ This project was developed during the **[AI Coding Accelerator](https://maven.co
 
 **Implementation Status:**
 - ✅ **Phase 0-5:** Core functionality complete (CLI, scanning, scoring, reporting)
-- ✅ **Phase 6:** LLM integration implemented (OpenAI, Anthropic, Gemini support)
+- ✅ **Phase 6:** LLM integration implemented (OpenAI, Anthropic, Gemini, Azure OpenAI support)
+- ✅ **Phase 9:** Migration to `rig.rs` complete (unified multi-provider orchestration)
 - 🚧 **Phase 7:** Quality engineering in progress (comprehensive testing, CI/CD)
-- ⏳ **Phase 8:** Documentation and release preparation (planned)
+- 📝 **Phase 8:** Documentation and release preparation (ongoing)
+
+**Test Coverage:** 40 tests (30 active, 10 ignored) | See [`docs/TESTING_GUIDE.md`](./docs/TESTING_GUIDE.md)
 
 ## Features
 
 ### Core Capabilities
 
-- **Explainable Security:** Transparent risk scoring with detailed rule attribution and text excerpts
-- **Fast & Lightweight:** Efficient pattern matching using Aho-Corasick and compiled regex
+- **Explainable Security:** Transparent risk scoring (0-100) with detailed rule attribution and text excerpts
+- **Fast & Lightweight:** Efficient pattern matching using Aho-Corasick and compiled regex (<100ms for typical prompts)
 - **Multiple Input Sources:** Scan files, stdin, or streaming logs with tail mode
-- **Flexible Output Formats:** Human-readable CLI output or JSON for automation
-- **LLM-Enhanced Analysis:** Optional verdicts from OpenAI, Anthropic, or Google Gemini
+- **Flexible Output Formats:** Human-readable CLI output or JSON for automation and CI/CD integration
+- **Multi-Provider LLM Analysis:** Optional verdicts from OpenAI, Anthropic, Google Gemini, or Azure OpenAI via `rig.rs`
+- **Provider Health Checks:** Built-in diagnostics to validate LLM provider connectivity and configuration
 
 ### Detection Coverage
 
@@ -177,6 +185,13 @@ export LLM_GUARD_API_VERSION=2024-02-15-preview
 # Dry-run mode (no external API calls)
 ./target/release/llm-guard scan --file samples/chat.txt --with-llm \
   --provider noop
+
+# Debug mode (dump raw provider verdict payloads on parse errors)
+./target/release/llm-guard scan --file samples/chat.txt --with-llm \
+  --provider anthropic --debug
+
+# Health check against configured providers (uses llm_providers.yaml if present)
+./target/release/llm-guard health --providers-config llm_providers.yaml
 ```
 
 **Streaming Mode:**
@@ -208,9 +223,9 @@ export LLM_GUARD_API_VERSION=2024-02-15-preview
 
 **CLI overrides:** Use `--provider`, `--model`, `--endpoint`, `--deployment`, `--project`, and `--workspace` to override these values for a single run without touching environment variables.
 
-**Provider profiles (`llm_providers.yaml`):**
+**Provider Profiles (`llm_providers.yaml`):**
 
-The CLI also looks for an optional `llm_providers.yaml` (override with `--providers-config`). This file lets you store credentials and defaults per provider so you can keep multiple API keys side-by-side. Example:
+The CLI supports an optional `llm_providers.yaml` configuration file (override with `--providers-config`) for managing multiple provider credentials and defaults side-by-side. Example:
 
 ```yaml
 providers:
@@ -226,7 +241,9 @@ providers:
     max_retries: 3
 ```
 
-Credentials are merged with environment variables and CLI flags using the usual precedence (flags → env → provider profile). To get started quickly, copy `llm_providers.example.yaml` to `llm_providers.yaml` and replace the placeholder values.
+**Configuration Precedence:** CLI flags → Environment variables → Provider profile
+
+**Quick Start:** Copy `llm_providers.example.yaml` to `llm_providers.yaml` and update with your API keys.
 
 **Loading from `.env` file:**
 
@@ -236,25 +253,22 @@ set -a && source .env && set +a
 ./target/release/llm-guard scan --file samples/chat.txt --with-llm
 ```
 
-**Using a configuration file:**
+**Alternative: TOML Configuration File:**
 
 ```toml
 # llm-config.toml
 [llm]
 provider = "anthropic"
 model = "claude-3-haiku-20240307"
-endpoint = "https://api.anthropic.com"
 timeout_secs = 45
 max_retries = 3
-# Optional rig-specific fields
-# deployment = "gpt4o-observability"
-# project = "security-lab"
-# workspace = "default"
 ```
 
 ```bash
 ./target/release/llm-guard --config llm-config.toml scan --with-llm --file prompt.txt
 ```
+
+> **Recommendation:** Use `llm_providers.yaml` for multi-provider setups or TOML for single-provider configurations.
 
 ## Technical Overview
 
@@ -309,19 +323,23 @@ See [`docs/ADR/`](./docs/ADR/) for complete architecture decision records.
 
 ## Project Documentation
 
-This project includes comprehensive documentation designed for both human developers and AI coding assistants:
+Comprehensive documentation designed for both human developers and AI coding assistants:
 
-- **`README.md`** (this file) — Project overview and quick start
-- **[`PRD.md`](./PRD.md)** — Complete Product Requirements Document with technical specifications
-- **[`PLAN.md`](./PLAN.md)** — Implementation roadmap with phase-by-phase progress tracking
-- **[`AGENTS.md`](./AGENTS.md)** — Onboarding guide for AI coding assistants (Rust conventions, patterns, collaboration guidelines)
-- **[`docs/ADR/`](./docs/ADR/)** — Architecture Decision Records documenting key design choices
+| Document | Purpose | Audience |
+|----------|---------|----------|
+| **[`README.md`](./README.md)** | Project overview, quick start, and AI workflow insights | Everyone |
+| **[`docs/USAGE.md`](./docs/USAGE.md)** | Complete CLI reference with all commands and flags | Users, operators |
+| **[`PRD.md`](./PRD.md)** | Complete Product Requirements Document | Developers, AI agents |
+| **[`PLAN.md`](./PLAN.md)** | Implementation roadmap with phase-by-phase tracking | Project contributors |
+| **[`AGENTS.md`](./AGENTS.md)** | Onboarding guide for AI coding assistants | AI agents, developers |
+| **[`docs/TESTING_GUIDE.md`](./docs/TESTING_GUIDE.md)** | Testing strategy, commands, and troubleshooting | Developers, QA |
+| **[`docs/ADR/`](./docs/ADR/)** | Architecture Decision Records | Technical stakeholders |
 
 ## AI-Assisted Development Insights
 
-### Development Workflow (Hendrik's Approach)
+### Development Workflow
 
-This project demonstrates a **PRD-driven, multi-agent AI coding workflow** optimized for rapid prototyping while maintaining quality:
+This project demonstrates a **PRD-driven, multi-agent AI coding workflow** that achieved a functional Rust CLI with comprehensive features in ~7 hours:
 
 #### 1. Requirements & Planning Phase
 
@@ -347,6 +365,63 @@ This project demonstrates a **PRD-driven, multi-agent AI coding workflow** optim
 - **RepoPrompt MCP:** Heavily used by Codex CLI for repository-aware code generation
 - **Context7 MCP:** Configured but minimal usage observed by agents
 - **Observation:** Different agents leverage different context sources based on their architectures
+
+**RepoPrompt Usage:**
+
+RepoPrompt is a macOS MCP server that converts selected files from local repositories into structured prompts for AI assistants, enabling repository-aware code generation and large-scale refactoring.
+
+**Key Features:**
+- **Selective Context:** Choose specific files/directories to include in prompts
+- **Structured Prompts:** Converts repository code into optimized format for AI consumption
+- **Reviewable Diffs:** Apply model-generated edits with diffs before writing to disk
+- **Token Estimation:** Monitors context size to stay within model limits
+- **Code Maps:** Generates repository structure summaries
+- **Multi-Provider:** Works with OpenAI, Anthropic, and other LLM providers
+
+**How It Works:**
+1. Select relevant files from your repository (e.g., `crates/llm-guard-core/src/scanner/`)
+2. RepoPrompt packages them into a structured prompt with file tree and content
+3. AI assistant receives full repository context for informed code generation
+4. Review proposed changes as diffs before accepting
+
+**Benefits in This Project:**
+- **Repository Awareness:** Codex CLI leveraged RepoPrompt to understand workspace structure
+- **Cross-File Refactoring:** Made large-scale changes (e.g., rig.rs migration) with context
+- **Consistent Patterns:** AI generated code matching existing conventions by seeing similar files
+- **Reduced Context Management:** Automatic selection of relevant files reduced manual copying
+
+**Observation:**
+During this hackathon, GPT-5 Codex via Codex CLI **heavily used RepoPrompt** for repository-wide context. This was a key factor in the rapid development speed—AI assistants had comprehensive awareness of project structure, naming conventions, and implementation patterns without explicit prompting.
+
+**Context7 Usage:**
+
+Context7 is an MCP server that injects up-to-date, version-specific documentation for referenced libraries directly into your prompt context. When working with AI assistants, append **`use context7`** to your prompts to trigger automatic documentation fetching:
+
+```
+# Example prompts that leverage Context7
+Show me how to use tokio runtime in Rust. use context7
+
+Create a clap CLI with subcommands and environment variables. use context7
+
+Implement retry logic with reqwest. use context7 for tokio, reqwest
+
+Debug serde_json deserialization errors. use context7 for serde, serde_json
+```
+
+**Benefits:**
+- Access current, version-specific documentation without manual lookups
+- Reduce hallucinations and outdated code suggestions
+- Especially useful for rapidly evolving crates like `tokio`, `reqwest`, `rig-core`
+
+**Configuration:**
+- Works with Claude Desktop, Cursor, Windsurf, and other MCP clients
+- Configured in MCP client settings (see [Context7 docs](https://context7.com/))
+- Can be auto-triggered for relevant prompts using client rules
+
+**When to Use:**
+- Working with unfamiliar Rust crates or libraries
+- Debugging dependencies or upgrading versions
+- Needing reliable, current API examples during implementation
 
 #### 3. Coding & Implementation
 
@@ -419,32 +494,50 @@ This project demonstrates a **PRD-driven, multi-agent AI coding workflow** optim
 
 ### Recommendations for AI-Assisted Projects
 
-**Before You Start:**
-1. **Write a detailed PRD first:** Invest time upfront in requirements—it's your AI agents' north star
-2. **Research domain best practices:** Use Perplexity/search to understand conventions before coding (especially for new languages)
-3. **Create agent onboarding docs:** Document conventions early (like [`AGENTS.md`](./AGENTS.md)) so agents stay consistent
+Based on this ~7-hour hackathon experience building a production-ready Rust CLI:
 
-**Tool Configuration:**
-4. **Set up MCP servers:** RepoPrompt provides excellent repository context—worth the setup effort
-5. **Use multiple agents strategically:** Primary for implementation (GPT-5 Codex) + secondary for review (Claude Code)
-6. **Separate review environment:** Dedicated git client (Tower) helps critical evaluation away from coding context
-7. **Configure IDE thoughtfully:** Separate terminals for different agents reduces confusion
+#### Before You Start
 
-**Development Process:**
-8. **Iterate incrementally:** Small, testable changes work better than large refactors with AI assistance
-9. **Review everything critically:** Treat AI output as thoughtful first drafts, not production-ready code
-10. **Test AI-generated code:** Happy path tests are often good; edge cases need human attention
-11. **Keep humans in architectural loop:** AI great for implementation; humans essential for design decisions
+1. **Write a detailed PRD first** — Invest time upfront in requirements; it becomes your AI agents' north star
+2. **Research domain best practices** — Use Perplexity/search to understand conventions before coding (critical for new languages)
+3. **Create agent onboarding docs** — Document conventions early (like [`AGENTS.md`](./AGENTS.md)) to maintain consistency
 
-**For Language Newcomers:**
-12. **Lean into AI for learning:** Went from Rust zero to functional CLI in days—AI accelerates language learning
-13. **Ask "why" questions:** Don't just accept code; understand the idioms and patterns being used
-14. **Build real projects:** Learning by doing with AI assistance beats tutorial hell
+#### Tool Configuration
 
-**Productivity Hacks:**
-15. **Fill agent wait time:** Use IDE (Cursor) for code review while waiting for agent completions
-16. **Document what works:** Track which agents excel at which tasks for future reference
-17. **Expect tool friction:** Multiple tools = cognitive overhead but also specialized capabilities
+4. **Set up MCP servers** — RepoPrompt provides excellent repository context; worth the 30-minute setup
+5. **Use multiple agents strategically** — Primary for implementation (GPT-5 Codex) + secondary for review (Claude Code)
+6. **Separate review environment** — Dedicated git client (Tower) enables critical evaluation away from coding context
+7. **Configure IDE thoughtfully** — Separate terminals for different agents reduces confusion and context bleeding
+
+#### Development Process
+
+8. **Iterate incrementally** — Small, testable changes work better than large refactors with AI assistance
+9. **Review everything critically** — Treat AI output as intelligent first drafts, not production-ready code
+10. **Test AI-generated code thoroughly** — Happy path tests often good; edge cases require human attention
+11. **Keep humans in architectural loop** — AI excels at implementation; humans essential for design decisions
+
+#### For Language Newcomers
+
+12. **Lean into AI for accelerated learning** — Went from Rust zero to functional CLI in ~7 hours
+13. **Ask "why" questions consistently** — Don't just accept code; understand the idioms and patterns
+14. **Build real projects** — Learning by doing with AI assistance beats tutorial-based learning
+
+#### Productivity Hacks
+
+15. **Fill agent wait time** — Use IDE (Cursor) for code review while waiting for agent completions
+16. **Document what works** — Track which agents excel at which tasks for future workflows
+17. **Expect tool friction** — Multiple tools = cognitive overhead but also specialized capabilities and redundancy
+
+## Provider Integration Pitfalls & Fixes
+
+While wiring rig.rs into real LLM providers we hit a few repeat offenders. The highlights:
+
+- **Anthropic truncation & malformed JSON** — Responses frequently dropped closing quotes/braces and embedded raw newlines inside strings. We added newline sanitisation, automatic quote/brace repair, a JSON5 fallback, and eventually a fallback verdict so scans never abort.
+- **OpenAI reasoning-only replies** — GPT‑5 often streamed only `reasoning` traces or tool calls. We now capture tool-call arguments, request OpenAI’s structured JSON schema, and fall back to an “unknown” verdict when the model withholds textual content.
+- **Gemini empty responses** — Successful calls can still return empty candidates. Health checks now treat empty responses as warnings instead of hard failures, surfacing an “unknown” verdict with guidance.
+- **Debugging provider quirks** — The global `--debug` flag flips `LLM_GUARD_DEBUG=1`, causing the adapter to log the raw upstream payload whenever parsing fails, making it obvious when prompt/schema updates are needed.
+
+These guardrails keep the CLI resilient even when upstream providers change response contracts mid-flight.
 
 ## Contributing
 
@@ -453,25 +546,25 @@ This is a hackathon project exploring AI-assisted development workflows. Contrib
 ### How to Contribute
 
 **Code Contributions:**
-- Follow Rust conventions documented in [`AGENTS.md`](./AGENTS.md)
-- Include tests for new features
-- Run `cargo fmt` and `cargo clippy` before submitting
+- Follow Rust conventions in [`AGENTS.md`](./AGENTS.md)
+- Include tests for new features (see [`docs/TESTING_GUIDE.md`](./docs/TESTING_GUIDE.md))
+- Run `cargo fmt && cargo clippy` before submitting
 - Document your AI-assisted workflow if applicable
 
 **Detection Rules:**
-- Add new prompt injection patterns to `rules/keywords.txt` or `rules/patterns.json`
-- Include test cases demonstrating the pattern
-- Document the attack vector and real-world examples
+- Add new patterns to `rules/keywords.txt` or `rules/patterns.json`
+- Include test cases with expected risk scores
+- Document attack vectors with real-world examples
 
 **Documentation:**
-- Help document AI collaboration patterns and workflows
-- Share insights from your own AI-assisted development experience
-- Improve existing documentation for clarity
+- Document AI collaboration patterns and workflows
+- Share insights from AI-assisted development experiences
+- Improve clarity and add practical examples
 
 **Testing:**
-- Add test cases for edge scenarios and corner cases
+- Add edge cases and corner case tests
+- Expand test fixture corpus with real-world samples
 - Contribute property-based tests for core logic
-- Help expand the test fixture corpus
 
 ## License & Disclaimer
 
@@ -521,7 +614,7 @@ MIT License — see [`LICENSE`](./LICENSE) file for details.
 - **Focus:** Practical applications of AI coding tools in modern software development
 
 **Tools & Technologies**
-- **AI Agents:**  [Codex CLI (OpenAI)](https://github.com/openai/codex-cli), [Claude Code (Anthropic)]((https://claude.ai))
+- **AI Agents:**  [Codex CLI (OpenAI)](https://github.com/openai/codex-cli), [Claude Code (Anthropic)](https://claude.ai)
 - **MCP Servers:** [RepoPrompt](https://repoprompt.com/), [Context7](https://context7.com/)
 - **IDE:** [Cursor](https://cursor.sh)
 - **Research:** [Perplexity](https://www.perplexity.ai/)

@@ -1,16 +1,18 @@
 use std::collections::HashMap;
+use std::env;
 use std::fs as stdfs;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use config::Config;
 use llm_guard_core::{
     build_client, render_report, DefaultScanner, FileRuleRepository, LlmClient, LlmSettings,
-    OutputFormat, RiskBand, RuleKind, RuleRepository, Scanner,
+    OutputFormat, RiskBand, RiskThresholds, RuleKind, RuleRepository, ScanReport, Scanner,
+    ScoreBreakdown,
 };
 use serde::Deserialize;
 use serde_yaml;
@@ -51,6 +53,10 @@ struct Cli {
         global = true
     )]
     providers_config: PathBuf,
+
+    /// Enable verbose diagnostics (including raw provider payloads on errors).
+    #[arg(long, global = true)]
+    debug: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -96,6 +102,15 @@ enum Commands {
         /// Override workspace identifier for providers that require it.
         #[arg(long)]
         workspace: Option<String>,
+    },
+    /// Execute health checks against configured LLM providers.
+    Health {
+        /// Limit the health check to a single provider name.
+        #[arg(long)]
+        provider: Option<String>,
+        /// Skip the live LLM call; only validate configuration/build steps.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -165,8 +180,8 @@ impl ProviderProfiles {
     }
 
     fn prime_env(&self, provider: &str) {
-        if let Some(profile) = self.entries.get(&provider.to_ascii_lowercase()) {
-            maybe_set_env("LLM_GUARD_PROVIDER", Some(provider.to_string()));
+        if let Some(profile) = self.get(provider) {
+            maybe_set_env("LLM_GUARD_PROVIDER", Some(profile.name.clone()));
             maybe_set_env("LLM_GUARD_API_KEY", profile.api_key.clone());
             maybe_set_env("LLM_GUARD_ENDPOINT", profile.endpoint.clone());
             maybe_set_env("LLM_GUARD_MODEL", profile.model.clone());
@@ -186,7 +201,7 @@ impl ProviderProfiles {
     }
 
     fn apply_defaults(&self, provider: &str, settings: &mut LlmSettings) {
-        if let Some(profile) = self.entries.get(&provider.to_ascii_lowercase()) {
+        if let Some(profile) = self.get(provider) {
             if settings.model.is_none() {
                 settings.model = profile.model.clone();
             }
@@ -209,6 +224,58 @@ impl ProviderProfiles {
             }
             if settings.api_version.is_none() && std::env::var("LLM_GUARD_API_VERSION").is_err() {
                 settings.api_version = profile.api_version.clone();
+            }
+        }
+    }
+
+    fn get(&self, provider: &str) -> Option<&ProviderProfile> {
+        self.entries.get(&provider.to_ascii_lowercase())
+    }
+
+    fn names(&self) -> Vec<String> {
+        self.entries
+            .values()
+            .map(|profile| profile.name.clone())
+            .collect()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+struct EnvGuard {
+    snapshot: Vec<(String, Option<String>)>,
+}
+
+impl EnvGuard {
+    fn new() -> Self {
+        Self {
+            snapshot: Vec::new(),
+        }
+    }
+
+    fn set(&mut self, key: &str, value: &str) {
+        if !self.snapshot.iter().any(|(k, _)| k == key) {
+            self.snapshot.push((key.to_string(), env::var(key).ok()));
+        }
+        env::set_var(key, value);
+    }
+
+    fn maybe_set(&mut self, key: &str, value: Option<&str>) {
+        if let Some(val) = value {
+            self.set(key, val);
+        }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, previous) in self.snapshot.drain(..).rev() {
+            if let Some(value) = previous {
+                env::set_var(&key, value);
+            } else {
+                env::remove_var(&key);
             }
         }
     }
@@ -338,6 +405,11 @@ async fn main() {
 async fn run() -> Result<i32> {
     init_tracing();
     let cli = Cli::parse();
+    if cli.debug {
+        env::set_var("LLM_GUARD_DEBUG", "1");
+    } else {
+        env::remove_var("LLM_GUARD_DEBUG");
+    }
     let provider_profiles = ProviderProfiles::load(&cli.providers_config)?;
     match cli.command.unwrap_or(Commands::ListRules { json: false }) {
         Commands::ListRules { json } => {
@@ -372,6 +444,9 @@ async fn run() -> Result<i32> {
                 &provider_profiles,
             )
             .await
+        }
+        Commands::Health { provider, dry_run } => {
+            run_health(&provider_profiles, provider.as_deref(), !dry_run).await
         }
     }
 }
@@ -640,6 +715,99 @@ fn exit_code_for_band(band: RiskBand) -> i32 {
         RiskBand::Medium => 2,
         RiskBand::High => 3,
     }
+}
+
+async fn run_health(
+    profiles: &ProviderProfiles,
+    provider_filter: Option<&str>,
+    perform_call: bool,
+) -> Result<i32> {
+    let mut targets = if let Some(filter) = provider_filter {
+        if let Some(profile) = profiles.get(filter) {
+            vec![profile.name.clone()]
+        } else {
+            vec![filter.to_string()]
+        }
+    } else if !profiles.is_empty() {
+        profiles.names()
+    } else if let Ok(env_provider) = env::var("LLM_GUARD_PROVIDER") {
+        vec![env_provider]
+    } else {
+        bail!("no providers configured; supply --provider or create llm_providers.yaml");
+    };
+
+    targets.sort();
+    targets.dedup();
+
+    let mut failed = false;
+    for provider in targets {
+        println!("Checking provider {provider}...");
+        match check_provider(profiles, &provider, perform_call).await {
+            Ok(()) => println!("  ok"),
+            Err(err) => {
+                failed = true;
+                eprintln!("  failed: {err:#}");
+            }
+        }
+    }
+
+    Ok(if failed { 1 } else { 0 })
+}
+
+async fn check_provider(
+    profiles: &ProviderProfiles,
+    provider: &str,
+    perform_call: bool,
+) -> Result<()> {
+    let profile_snapshot = profiles.get(provider).cloned();
+    let canonical_provider = profile_snapshot
+        .as_ref()
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| provider.to_string());
+
+    let mut guard = EnvGuard::new();
+    guard.set("LLM_GUARD_PROVIDER", &canonical_provider);
+    if let Some(profile) = profile_snapshot.as_ref() {
+        guard.maybe_set("LLM_GUARD_API_KEY", profile.api_key.as_deref());
+        guard.maybe_set("LLM_GUARD_ENDPOINT", profile.endpoint.as_deref());
+        guard.maybe_set("LLM_GUARD_MODEL", profile.model.as_deref());
+        guard.maybe_set("LLM_GUARD_DEPLOYMENT", profile.deployment.as_deref());
+        guard.maybe_set("LLM_GUARD_PROJECT", profile.project.as_deref());
+        guard.maybe_set("LLM_GUARD_WORKSPACE", profile.workspace.as_deref());
+        if let Some(timeout) = profile.timeout_secs {
+            guard.set("LLM_GUARD_TIMEOUT_SECS", &timeout.to_string());
+        }
+        if let Some(retries) = profile.max_retries {
+            guard.set("LLM_GUARD_MAX_RETRIES", &retries.to_string());
+        }
+        guard.maybe_set("LLM_GUARD_API_VERSION", profile.api_version.as_deref());
+    }
+
+    let mut settings = LlmSettings::from_env()?;
+    let provider_for_defaults = settings.provider.clone();
+    profiles.apply_defaults(&provider_for_defaults, &mut settings);
+    drop(guard);
+
+    let client = build_client(&settings)?;
+    if perform_call {
+        let report = dummy_report();
+        let _ = client
+            .enrich("Health check probe", &report)
+            .await
+            .context("LLM enrich call failed")?;
+    }
+
+    Ok(())
+}
+
+fn dummy_report() -> ScanReport {
+    ScanReport::from_breakdown(
+        Vec::new(),
+        0,
+        None,
+        ScoreBreakdown::default(),
+        &RiskThresholds::default(),
+    )
 }
 
 fn init_tracing() {
