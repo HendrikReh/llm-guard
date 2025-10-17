@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod default_scanner;
 /// Byte span within the scanned text `(start, end)` where `start <= end`.
 pub mod file_repository;
 
