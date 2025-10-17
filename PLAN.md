@@ -102,7 +102,7 @@ This living document tracks implementation progress for the LLM-Guard project, d
 **Goal:** Comprehensive testing and validation
 **AI Collaboration:** Test generation, edge case identification, CI configuration
 
-- [~] Establish unit, integration (`tests/e2e.rs`), and property-based tests (unit/integration complete; property coverage added, fuzzing still open)
+- [~] Establish unit, integration (`tests/e2e.rs`), and property-based tests (unit/integration complete; property coverage extended to rule parsing & tailing, targeted fuzzing still open)
 - [x] Configure `cargo-nextest`, coverage (`llvm-cov`), and CI tasks (fmt, lint, test, deny, audit)
 - [x] Add fixture corpus for common jailbreak patterns and regression cases; automate through snapshot tests (`insta`)
 - [x] Document security posture (timeouts, redactions) and add assertions preventing panic paths
@@ -177,7 +177,7 @@ This living document tracks implementation progress for the LLM-Guard project, d
 
 ### Next Steps (Quick Reference)
 
-1. ⚒️ Advance Phase 7 with fuzz coverage for rule parsing and streaming inputs.
+1. ⚒️ Advance Phase 7 with remaining fuzzing (streaming ingestion edge cases, LLM adapter mocks).
 2. 📘 Expand Phase 8 documentation (usage guide landing in `docs/USAGE.md` can seed the README refresh).
 3. 🧪 Finalise Phase 9 with refreshed CLI tests demonstrating the rig-backed providers.
 

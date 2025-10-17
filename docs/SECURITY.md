@@ -13,12 +13,14 @@ This document summarizes the hardening measures currently implemented in LLM-Gua
 - **Length-normalised scoring:** `ScoreBreakdown::risk_score` clamps totals to the `[0, 100]` range, preventing overflow or runaway scores on long prompts. Property tests (`score_breakdown_never_exceeds_bounds`) ensure these clamps remain intact.
 - **Family dampening:** Repeated rule hits are automatically dampened to reduce false positives from spammy prompts. Property tests (`family_dampening_caps_adjusted_total` and `scanning_repeated_instructions_remains_stable`) confirm the dampening logic holds across long inputs.
 - **Excerpt redaction:** `extract_excerpt` truncates excerpts to `MAX_EXCERPT_CHARS` (240 characters) and sanitises UTF-8 boundaries. Property tests (`excerpt_limits_characters_and_boundaries`) guarantee the truncation never leaks more than the allowed window.
+- **Rule loading guardrails:** Property tests exercise synthetic keyword and regex packs to ensure `FileRuleRepository` fails fast on duplicates and never panics on large inputs.
 - **Finding validation:** The scanner validates every emitted `Finding` before returning a report, preventing downstream consumers from encountering invalid spans or weights.
 
 ## Testing & Tooling
 
 - **Snapshot corpus:** Representative safe, suspicious, and malicious prompts live under `crates/llm-guard-core/tests/fixtures`. Snapshot tests (`scanner_snapshots.rs`) exercise the full rule pack and encode expected risk bands for regression detection.
 - **Offline-friendly QA:** `cargo test` works in offline mode once dependencies are cached; CI runs `cargo nextest` and `cargo llvm-cov` to ensure reproducibility.
+- **Streaming tail fuzzing:** Property tests in the CLI crate feed multiple random prompt updates through the tailing code path to verify exit codes remain consistent across rapid file mutations.
 - **Future work:** Phase 7 tracks additional fuzzing around rule parsing and CLI input streaming. Any new guardrail should be documented here and paired with a regression test.
 
 Keep this document in sync with the roadmap (`PLAN.md`) so that security posture improvements are traceable and test-backed.

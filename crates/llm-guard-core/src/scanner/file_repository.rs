@@ -131,6 +131,8 @@ struct JsonRule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+    use serde_json::json;
     use std::path::Path;
 
     fn write(path: &Path, contents: &str) {
@@ -207,5 +209,107 @@ DATA_EXFIL|30|Tries to exfiltrate secrets|api key
             rules.iter().any(|rule| rule.id == "CODE_INJECTION"),
             "patterns.json should provide CODE_INJECTION rule"
         );
+    }
+
+    fn text_without_delimiter() -> impl Strategy<Value = String> {
+        proptest::string::string_regex("[A-Za-z0-9 _\\-]{3,48}").unwrap()
+    }
+
+    proptest! {
+        #[test]
+        fn keyword_rules_round_trip(
+            entries in proptest::collection::vec(
+                (
+                    text_without_delimiter(),
+                    0.1f32..99.9f32,
+                    text_without_delimiter(),
+                    text_without_delimiter()
+                ),
+                1..12
+            )
+        ) {
+            let temp = tempfile::tempdir().unwrap();
+            let mut buffer = String::new();
+            for (idx, (id, weight, desc, pattern)) in entries.iter().enumerate() {
+                let unique_id = format!("AUTO{}_{}", idx, id);
+                buffer.push_str(&format!(
+                    "{id}|{weight:.3}|{desc}|{pattern}\n",
+                    id = unique_id,
+                    weight = weight.clamp(0.1, 99.9),
+                    desc = desc,
+                    pattern = pattern
+                ));
+            }
+            write(&temp.path().join("keywords.txt"), &buffer);
+
+            let repo = FileRuleRepository::new(temp.path());
+            let rules = futures::executor::block_on(RuleRepository::load_rules(&repo))
+                .expect("keyword rules should parse");
+
+            prop_assert_eq!(rules.len(), entries.len());
+            for rule in rules {
+                prop_assert!(rule.weight >= 0.0 && rule.weight <= 100.0);
+                prop_assert_eq!(rule.kind, RuleKind::Keyword);
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn pattern_rules_round_trip(
+            entries in proptest::collection::vec(
+                (
+                    text_without_delimiter(),
+                    0.1f32..99.9f32,
+                    text_without_delimiter(),
+                    proptest::option::of(1usize..256usize)
+                ),
+                1..12
+            )
+        ) {
+            let temp = tempfile::tempdir().unwrap();
+            let mut json_rules = Vec::new();
+            for (idx, (desc, weight, pattern, window)) in entries.iter().enumerate() {
+                json_rules.push(json!({
+                    "id": format!("REGEX_AUTO_{}", idx),
+                    "description": desc,
+                    "pattern": regex::escape(pattern),
+                    "weight": weight.clamp(0.1, 99.9),
+                    "window": window,
+                }));
+            }
+            write(
+                &temp.path().join("patterns.json"),
+                &serde_json::to_string(&json_rules).unwrap(),
+            );
+
+            let repo = FileRuleRepository::new(temp.path());
+            let rules = futures::executor::block_on(RuleRepository::load_rules(&repo))
+                .expect("pattern rules should parse");
+
+            prop_assert_eq!(rules.len(), entries.len());
+            for rule in rules {
+                prop_assert!(rule.weight >= 0.0 && rule.weight <= 100.0);
+                prop_assert_eq!(rule.kind, RuleKind::Regex);
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn duplicate_ids_trigger_error(pattern in text_without_delimiter()) {
+            let temp = tempfile::tempdir().unwrap();
+            let duplicate = "DUPLICATE_ID";
+            let keywords = format!(
+                "{id}|10|desc|{pattern}\n{id}|12|desc2|{pattern}_again\n",
+                id = duplicate,
+                pattern = pattern
+            );
+            write(&temp.path().join("keywords.txt"), &keywords);
+            let repo = FileRuleRepository::new(temp.path());
+            let err = futures::executor::block_on(RuleRepository::load_rules(&repo))
+                .expect_err("duplicate ids should error");
+            prop_assert!(err.to_string().contains("duplicate rule id"));
+        }
     }
 }
