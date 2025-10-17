@@ -1,3 +1,4 @@
+mod anthropic;
 mod openai;
 mod settings;
 
@@ -6,6 +7,7 @@ use async_trait::async_trait;
 
 use crate::scanner::{LlmVerdict, ScanReport};
 
+pub use anthropic::AnthropicClient;
 pub use openai::OpenAiClient;
 pub use settings::LlmSettings;
 
@@ -35,6 +37,7 @@ pub fn build_client(settings: &LlmSettings) -> Result<Box<dyn LlmClient>> {
     match settings.provider.to_lowercase().as_str() {
         "noop" => Ok(Box::new(NoopLlmClient::default())),
         "openai" | "open-ai" => Ok(Box::new(OpenAiClient::new(settings)?)),
+        "anthropic" | "claude" => Ok(Box::new(AnthropicClient::new(settings)?)),
         other => bail!("unsupported LLM provider `{}`", other),
     }
 }

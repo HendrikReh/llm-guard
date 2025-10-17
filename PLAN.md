@@ -88,7 +88,8 @@ This living document tracks implementation progress for the LLM-Guard project, d
 - [x] Define `LlmClient` trait with async interface and implement OpenAI adapter (feature-gated, requires API key)
 - [x] Add request shaping (prompt template, truncation) and response parsing with guardrails/timeouts
 - [x] Provide dry-run/mock adapter for tests; record usage metrics (latency, token count logging via `tracing`)
-- [ ] Update CLI flag `--with-llm` to call adapter and merge verdict into `ScanReport`
+- [x] Update CLI flag `--with-llm` to call adapter, support tail streaming, and merge verdicts into `ScanReport`
+- [ ] Add additional providers (e.g., Anthropic, Azure OpenAI, local models) using the `LlmClient` interface
 
 ## Phase 7 — Quality Engineering
 

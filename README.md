@@ -109,14 +109,14 @@ export LLM_GUARD_MODEL=gpt-4o-mini
 # Tail a log while enriching with LLM verdicts
 ./target/release/llm-guard scan --file logs/chat.log --tail --with-llm
 
-> `--with-llm` currently supports the OpenAI chat completions API (default provider). Set `LLM_GUARD_PROVIDER=noop` to disable external calls while retaining heuristic output.
+> `--with-llm` currently supports the OpenAI chat completions API (default provider) and Anthropic Messages API. Set `LLM_GUARD_PROVIDER=noop` to disable external calls while retaining heuristic output.
 ```
 
 > Set `LLM_GUARD_PROVIDER=noop` to run locally without calling an external service (returns heuristic-only verdicts).
 
 **LLM Environment Variables:**
 
-- `LLM_GUARD_PROVIDER` — provider identifier (`openai` by default, `noop` for dry runs).
+- `LLM_GUARD_PROVIDER` — provider identifier (`openai` by default; `anthropic`, `noop` also supported).
 - `LLM_GUARD_API_KEY` — required API key/token for real providers.
 - `LLM_GUARD_ENDPOINT` — optional custom endpoint/base URL (defaults to the provider's public API).
 - `LLM_GUARD_MODEL` — optional model name (e.g., `gpt-4o-mini`).
