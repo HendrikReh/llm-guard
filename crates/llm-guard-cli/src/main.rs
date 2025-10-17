@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
+use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use llm_guard_core::{
     render_report, DefaultScanner, FileRuleRepository, OutputFormat, RiskBand, RuleKind,
@@ -11,6 +12,8 @@ use llm_guard_core::{
 use tokio::{
     fs,
     io::{self, AsyncReadExt},
+    signal,
+    time::sleep,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -37,20 +40,26 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// List all loaded rules
+    /// List all loaded rules.
     ListRules {
-        /// Emit rules as JSON instead of human-readable text
+        /// Emit rules as JSON instead of human-readable text.
         #[arg(long)]
         json: bool,
     },
-    /// Scan input (stdin or file) and produce a risk report
+    /// Scan input (stdin or file) and produce a risk report.
     Scan {
-        /// Optional path to a file to scan; omit to read from stdin
+        /// Optional path to a file to scan; omit to read from stdin.
         #[arg(long)]
         file: Option<PathBuf>,
-        /// Emit JSON instead of human-readable output
+        /// Emit JSON instead of human-readable output.
         #[arg(long)]
         json: bool,
+        /// Tail the specified file for changes (requires --file).
+        #[arg(long)]
+        tail: bool,
+        /// Augment heuristic report with LLM verdict (not yet implemented).
+        #[arg(long = "with-llm")]
+        with_llm: bool,
     },
 }
 
@@ -73,7 +82,12 @@ async fn run() -> Result<i32> {
             list_rules(&cli.rules_dir, json).await?;
             Ok(0)
         }
-        Commands::Scan { file, json } => scan_input(&cli.rules_dir, file.as_deref(), json).await,
+        Commands::Scan {
+            file,
+            json,
+            tail,
+            with_llm,
+        } => scan_input(&cli.rules_dir, file.as_deref(), json, tail, with_llm).await,
     }
 }
 
@@ -114,23 +128,38 @@ async fn list_rules(rules_dir: &Path, json: bool) -> Result<()> {
     Ok(())
 }
 
-async fn scan_input(rules_dir: &Path, file: Option<&Path>, json: bool) -> Result<i32> {
+async fn scan_input(
+    rules_dir: &Path,
+    file: Option<&Path>,
+    json: bool,
+    tail: bool,
+    with_llm: bool,
+) -> Result<i32> {
+    if with_llm {
+        bail!("--with-llm is not implemented yet; stay tuned for Phase 6.");
+    }
     let repo = Arc::new(FileRuleRepository::new(rules_dir));
-    let scanner = DefaultScanner::new(Arc::clone(&repo));
-    let text = read_input(file)
-        .await
-        .with_context(|| "failed to read input for scanning")?;
-    let report = scanner.scan(&text).await?;
-    let rendered = render_report(
-        &report,
-        if json {
-            OutputFormat::Json
-        } else {
-            OutputFormat::Human
-        },
-    )?;
-    println!("{}", rendered);
-    Ok(exit_code_for_band(report.risk_band))
+    let scanner = Arc::new(DefaultScanner::new(Arc::clone(&repo)));
+
+    if tail {
+        let file = file.ok_or_else(|| anyhow!("--tail requires --file to specify a path"))?;
+        tail_file(scanner, file, json).await
+    } else {
+        let text = read_input(file)
+            .await
+            .with_context(|| "failed to read input for scanning")?;
+        let report = scanner.scan(&text).await?;
+        let rendered = render_report(
+            &report,
+            if json {
+                OutputFormat::Json
+            } else {
+                OutputFormat::Human
+            },
+        )?;
+        println!("{}", rendered);
+        Ok(exit_code_for_band(report.risk_band))
+    }
 }
 
 async fn read_input(path: Option<&Path>) -> Result<String> {
@@ -146,6 +175,42 @@ async fn read_input(path: Option<&Path>) -> Result<String> {
             .await
             .context("failed to read from stdin")?;
         Ok(buf)
+    }
+}
+
+async fn tail_file(
+    scanner: Arc<DefaultScanner<FileRuleRepository>>,
+    path: &Path,
+    json: bool,
+) -> Result<i32> {
+    let mut last_snapshot = String::new();
+    let mut last_code = 0;
+    loop {
+        let contents = fs::read_to_string(path)
+            .await
+            .with_context(|| format!("failed to read tailed file {}", path.display()))?;
+        if contents != last_snapshot {
+            last_snapshot = contents.clone();
+            let report = scanner.scan(&contents).await?;
+            let rendered = render_report(
+                &report,
+                if json {
+                    OutputFormat::Json
+                } else {
+                    OutputFormat::Human
+                },
+            )?;
+            println!("\n=== {} ===\n{}", path.display(), rendered);
+            last_code = exit_code_for_band(report.risk_band);
+        }
+
+        tokio::select! {
+            _ = sleep(Duration::from_secs(2)) => {},
+            _ = signal::ctrl_c() => {
+                eprintln!("Stopping tail for {}", path.display());
+                return Ok(last_code);
+            }
+        }
     }
 }
 
