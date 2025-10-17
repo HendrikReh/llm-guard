@@ -112,6 +112,7 @@ This project was developed during the **[AI Coding Accelerator](https://maven.co
 - **Data Exfiltration:** Identifies prompt leak and secret revelation attempts
 - **Policy Subversion:** Catches jailbreak and safety bypass patterns
 - **Obfuscation Techniques:** Recognizes encoded payloads and Unicode tricks
+- **Streaming Resilience:** Tail mode de-duplicates unchanged snapshots and is fuzz-tested against rapid log churn
 
 ## Quick Start
 
@@ -122,6 +123,17 @@ git clone https://github.com/HendrikReh/llm-guard
 cd llm-guard
 cargo build --release
 ```
+
+### Quality Checks
+
+```bash
+cargo fmt --all
+cargo clippy --all-targets --all-features -- -D warnings
+cargo nextest run --workspace --all-features
+cargo llvm-cov --workspace --all-features --html
+```
+
+> Tip: The `just test` recipe automatically prefers `cargo nextest` (and falls back to `cargo test` if it is not installed).
 
 ### Usage Examples
 

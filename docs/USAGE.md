@@ -127,6 +127,12 @@ llm-guard scan [OPTIONS]
 - `3` — High risk (score ≥ 60)
 - `1` — Error (file not found, parse failure, etc.)
 
+#### Streaming Tail Mode
+
+- `--tail` polls the target file every two seconds (configurable via `tail_file` in tests) and only re-scans when the contents change.
+- Each refresh prints a banner with the file path followed by the rendered report (respecting `--json`).
+- The tail loop is fuzz-tested to ensure rapid updates or alternating prompt content do not panic and always return the final risk band exit code.
+
 **Example Output (Human-Readable):**
 ```
 Risk: 72/100  (HIGH)

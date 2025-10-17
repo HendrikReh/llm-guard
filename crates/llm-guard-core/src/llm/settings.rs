@@ -42,20 +42,26 @@ impl LlmSettings {
     }
 
     fn from_map(vars: HashMap<String, String>) -> Result<Self> {
+        let get_trimmed = |key: &str| -> Option<String> {
+            vars.get(key)
+                .map(|v| v.trim())
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string())
+        };
         let provider = vars
             .get(Self::PROVIDER_ENV)
-            .cloned()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| "openai".to_string())
-            .trim()
-            .to_string();
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "openai".to_string());
         let provider_lower = provider.to_lowercase();
         let api_key = match provider_lower.as_str() {
-            "noop" => vars.get(Self::API_KEY_ENV).cloned().unwrap_or_default(),
+            "noop" => get_trimmed(Self::API_KEY_ENV).unwrap_or_default(),
             _ => vars
                 .get(Self::API_KEY_ENV)
-                .cloned()
-                .filter(|v| !v.trim().is_empty())
+                .map(|v| v.trim())
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string())
                 .with_context(|| {
                     format!(
                         "environment variable {} must be set when --with-llm is used",
@@ -63,26 +69,11 @@ impl LlmSettings {
                     )
                 })?,
         };
-        let endpoint = vars
-            .get(Self::ENDPOINT_ENV)
-            .cloned()
-            .filter(|v| !v.trim().is_empty());
-        let model = vars
-            .get(Self::MODEL_ENV)
-            .cloned()
-            .filter(|v| !v.trim().is_empty());
-        let deployment = vars
-            .get(Self::DEPLOYMENT_ENV)
-            .cloned()
-            .filter(|v| !v.trim().is_empty());
-        let project = vars
-            .get(Self::PROJECT_ENV)
-            .cloned()
-            .filter(|v| !v.trim().is_empty());
-        let workspace = vars
-            .get(Self::WORKSPACE_ENV)
-            .cloned()
-            .filter(|v| !v.trim().is_empty());
+        let endpoint = get_trimmed(Self::ENDPOINT_ENV);
+        let model = get_trimmed(Self::MODEL_ENV);
+        let deployment = get_trimmed(Self::DEPLOYMENT_ENV);
+        let project = get_trimmed(Self::PROJECT_ENV);
+        let workspace = get_trimmed(Self::WORKSPACE_ENV);
         let timeout_secs = vars
             .get(Self::TIMEOUT_ENV)
             .and_then(|v| v.trim().parse::<u64>().ok());
@@ -90,10 +81,7 @@ impl LlmSettings {
             .get(Self::RETRIES_ENV)
             .and_then(|v| v.trim().parse::<u32>().ok())
             .unwrap_or(2);
-        let api_version = vars
-            .get(Self::API_VERSION_ENV)
-            .cloned()
-            .filter(|v| !v.trim().is_empty());
+        let api_version = get_trimmed(Self::API_VERSION_ENV);
 
         Ok(Self {
             provider,
@@ -114,6 +102,8 @@ impl LlmSettings {
 mod tests {
     use super::*;
     use once_cell::sync::Lazy;
+    use proptest::prelude::*;
+    use std::collections::HashMap;
     use std::env;
     use std::sync::Mutex;
 
@@ -203,5 +193,84 @@ mod tests {
             env::remove_var(LlmSettings::PROJECT_ENV);
             env::remove_var(LlmSettings::WORKSPACE_ENV);
         });
+    }
+
+    fn trimmed_string() -> impl Strategy<Value = String> {
+        proptest::string::string_regex("[A-Za-z0-9 _\\-]{1,24}").unwrap()
+    }
+
+    proptest! {
+        #[test]
+        fn from_map_trims_values_and_defaults(
+            provider in prop_oneof![
+                Just("openai".to_string()),
+                Just("anthropic".to_string()),
+                Just("gemini".to_string()),
+                Just("noop".to_string()),
+            ],
+            api_key in proptest::option::of(trimmed_string()),
+            endpoint in proptest::option::of(trimmed_string()),
+            model in proptest::option::of(trimmed_string()),
+            timeout in proptest::option::of(0u64..120u64),
+            retries in proptest::option::of(0u32..6u32)
+        ) {
+            let mut vars = HashMap::new();
+            vars.insert(
+                LlmSettings::PROVIDER_ENV.to_string(),
+                format!("  {}  ", provider)
+            );
+
+            match provider.as_str() {
+                "noop" => {
+                    if let Some(key) = api_key.clone() {
+                        vars.insert(LlmSettings::API_KEY_ENV.to_string(), format!("  {}  ", key));
+                    }
+                }
+                _ => {
+                    let key = api_key.clone().unwrap_or_else(|| "secret-key".to_string());
+                    vars.insert(LlmSettings::API_KEY_ENV.to_string(), format!("  {}  ", key));
+                }
+            }
+
+            if let Some(ep) = endpoint.clone() {
+                vars.insert(LlmSettings::ENDPOINT_ENV.to_string(), format!("  {}  ", ep));
+            }
+            if let Some(model) = model.clone() {
+                vars.insert(LlmSettings::MODEL_ENV.to_string(), format!("  {}  ", model));
+            }
+            if let Some(t) = timeout {
+                vars.insert(LlmSettings::TIMEOUT_ENV.to_string(), format!("  {}  ", t));
+            }
+            if let Some(r) = retries {
+                vars.insert(LlmSettings::RETRIES_ENV.to_string(), format!("  {}  ", r));
+            }
+
+            let settings = LlmSettings::from_map(vars).expect("settings should parse");
+            prop_assert_eq!(settings.provider, provider.trim());
+            if provider == "noop" {
+                if let Some(key) = api_key.clone() {
+                    prop_assert_eq!(settings.api_key, key.trim());
+                } else {
+                    prop_assert!(settings.api_key.is_empty());
+                }
+            } else {
+                let expected_key = api_key.unwrap_or_else(|| "secret-key".to_string());
+                prop_assert_eq!(settings.api_key, expected_key.trim());
+            }
+            if let Some(ep) = endpoint {
+                prop_assert_eq!(settings.endpoint.as_deref(), Some(ep.trim()));
+            } else {
+                prop_assert!(settings.endpoint.is_none());
+            }
+            if let Some(model) = model {
+                prop_assert_eq!(settings.model.as_deref(), Some(model.trim()));
+            }
+            match timeout {
+                Some(t) => prop_assert_eq!(settings.timeout_secs, Some(t)),
+                None => prop_assert!(settings.timeout_secs.is_none()),
+            }
+            let expected_retries = retries.unwrap_or(2);
+            prop_assert_eq!(settings.max_retries, expected_retries);
+        }
     }
 }
