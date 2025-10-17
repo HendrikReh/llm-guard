@@ -42,6 +42,10 @@ pub fn build_client(settings: &LlmSettings) -> Result<Box<dyn LlmClient>> {
     let kind = ProviderKind::from_provider(settings.provider.trim())?;
     match kind {
         ProviderKind::Noop => Ok(Box::new(NoopLlmClient::default())),
+        ProviderKind::Gemini => {
+            // Use standalone Gemini client to avoid rig deserialization issues
+            Ok(Box::new(GeminiClient::new(settings)?))
+        }
         ProviderKind::Rig => {
             bail!("Select a specific rig-enabled provider (e.g. openai) in LLM_GUARD_PROVIDER")
         }

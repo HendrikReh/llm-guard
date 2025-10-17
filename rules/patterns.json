@@ -11,5 +11,17 @@
     "description": "Requests to rewrite or ignore system instructions",
     "pattern": "(?i)pretend\\s+you\\s+are\\s+a\\s+developer",
     "weight": 30
+  },
+  {
+    "id": "INSTR_IGNORE",
+    "description": "Attempts to ignore or override previous instructions",
+    "pattern": "(?i)ignore\\s+(?:your\\s+)?(?:previous|prior|all)\\s+(?:instructions?|prompts?|rules?)",
+    "weight": 35
+  },
+  {
+    "id": "PROMPT_LEAK",
+    "description": "Attempts to reveal system prompts or hidden instructions",
+    "pattern": "(?i)(?:dump|reveal|show|tell\\s+me|print)\\s+.*?(?:hidden|system|initial|original)?\\s*(?:prompt|instruction)s?",
+    "weight": 40
   }
 ]

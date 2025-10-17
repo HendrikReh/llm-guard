@@ -6,14 +6,13 @@ use rig::client::CompletionClient;
 use rig::completion::message::AssistantContent;
 use rig::completion::{CompletionError, CompletionModelDyn};
 use rig::providers::azure::AzureOpenAIAuth;
-use rig::providers::{anthropic, azure, gemini, openai};
+use rig::providers::{anthropic, azure, openai};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
 
 const DEFAULT_OPENAI_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_ANTHROPIC_MODEL: &str = "claude-3-5-sonnet-latest";
-const DEFAULT_GEMINI_MODEL: &str = "gemini-1.5-pro";
 const MAX_OUTPUT_TOKENS: u64 = 200;
 const TEMPERATURE: f64 = 0.1;
 const SYSTEM_PROMPT: &str = "You are an application security assistant. Analyze prompt-injection scan results and respond with strict JSON: {\"label\": \"safe|suspicious|malicious\", \"rationale\": \"...\", \"mitigation\": \"...\"}. The mitigation should advise remediation steps.";
@@ -36,7 +35,9 @@ impl RigLlmClient {
         match kind {
             ProviderKind::OpenAi => Ok(Box::new(Self::new_openai(settings)?)),
             ProviderKind::Anthropic => Ok(Box::new(Self::new_anthropic(settings)?)),
-            ProviderKind::Gemini => Ok(Box::new(Self::new_gemini(settings)?)),
+            ProviderKind::Gemini => {
+                bail!("Gemini provider should use standalone client, not rig adapter")
+            }
             ProviderKind::Azure => Ok(Box::new(Self::new_azure(settings)?)),
             ProviderKind::Noop | ProviderKind::Rig => {
                 bail!("rig adapter does not support provider `{kind:?}` yet")
@@ -100,30 +101,8 @@ impl RigLlmClient {
         ))
     }
 
-    fn new_gemini(settings: &LlmSettings) -> Result<Self> {
-        if settings.api_key.trim().is_empty() {
-            bail!("Gemini API key must be provided via LLM_GUARD_API_KEY");
-        }
-
-        let mut builder = gemini::Client::builder(&settings.api_key);
-        if let Some(endpoint) = settings.endpoint.as_deref() {
-            builder = builder.base_url(endpoint);
-        }
-        let client = builder
-            .build()
-            .context("failed to build gemini rig client")?;
-
-        let model_id = settings
-            .model
-            .clone()
-            .filter(|m| !m.trim().is_empty())
-            .unwrap_or_else(|| DEFAULT_GEMINI_MODEL.to_string());
-
-        let model: Box<dyn CompletionModelDyn + Send + Sync> =
-            Box::new(client.completion_model(&model_id));
-
-        Ok(Self::from_model(model, "gemini", model_id, None, true))
-    }
+    // Note: Gemini support removed from rig adapter due to deserialization issues.
+    // Gemini now uses a standalone HTTP client implementation (see gemini.rs).
 
     fn new_azure(settings: &LlmSettings) -> Result<Self> {
         if settings.api_key.trim().is_empty() {
@@ -217,17 +196,16 @@ impl LlmClient for RigLlmClient {
         }
 
         if self.config.provider_label == "openai" {
+            // Use simple json_object format instead of json_schema for better compatibility
+            // with reasoning models like gpt-5
             builder = builder.additional_params(json!({
                 "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "verdict",
-                        "strict": false,
-                        "schema": verdict_json_schema()
-                    }
+                    "type": "json_object"
                 }
             }));
         }
+        // Note: Gemini function calling removed due to rig compatibility issues
+        // Gemini will rely on prompt instructions for JSON formatting
 
         let request = builder.build();
 
@@ -255,6 +233,9 @@ impl LlmClient for RigLlmClient {
 
         let choice = response.choice;
 
+        // Always log raw response when debug is enabled
+        debug_log_choice(self.config.provider_label, &choice);
+
         let content = choice
             .clone()
             .into_iter()
@@ -270,8 +251,13 @@ impl LlmClient for RigLlmClient {
             .join("\n");
 
         let trimmed = content.trim();
+
+        // Log extracted content when debug is enabled
+        if debug_enabled() && !trimmed.is_empty() {
+            tracing::warn!("rig {} extracted content: {}", self.config.provider_label, trimmed);
+        }
+
         if trimmed.is_empty() {
-            debug_log_choice(self.config.provider_label, &choice);
             // Gemini/OpenAI callbacks sometimes omit textual content while returning metadata only.
             // In that case we produce a fallback verdict instead of treating it as an error.
             tracing::warn!(
@@ -282,11 +268,7 @@ impl LlmClient for RigLlmClient {
         }
 
         let json_payload = extract_json_payload(trimmed);
-        let verdict = parse_verdict_json(&json_payload, self.config.provider_label, &self.model_id)
-            .or_else(|err| {
-                debug_log_choice(self.config.provider_label, &choice);
-                Err(err)
-            })?;
+        let verdict = parse_verdict_json(&json_payload, self.config.provider_label, &self.model_id)?;
 
         Ok(LlmVerdict {
             label: verdict.label,
@@ -360,22 +342,6 @@ fn fallback_model_verdict(provider: &str) -> ModelVerdict {
         ),
         mitigation: "Review provider output or adjust prompt/response parsing schema.".into(),
     }
-}
-
-fn verdict_json_schema() -> serde_json::Value {
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["label", "rationale", "mitigation"],
-        "properties": {
-            "label": {
-                "type": "string",
-                "enum": ["safe", "suspicious", "malicious", "unknown"]
-            },
-            "rationale": { "type": "string" },
-            "mitigation": { "type": "string" }
-        }
-    })
 }
 
 fn sanitize_json_strings(payload: &str) -> String {

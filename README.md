@@ -533,8 +533,9 @@ Based on this ~7-hour hackathon experience building a production-ready Rust CLI:
 While wiring rig.rs into real LLM providers we hit a few repeat offenders. The highlights:
 
 - **Anthropic truncation & malformed JSON** — Responses frequently dropped closing quotes/braces and embedded raw newlines inside strings. We added newline sanitisation, automatic quote/brace repair, a JSON5 fallback, and eventually a fallback verdict so scans never abort.
-- **OpenAI reasoning-only replies** — GPT‑5 often streamed only `reasoning` traces or tool calls. We now capture tool-call arguments, request OpenAI’s structured JSON schema, and fall back to an “unknown” verdict when the model withholds textual content.
-- **Gemini empty responses** — Successful calls can still return empty candidates. Health checks now treat empty responses as warnings instead of hard failures, surfacing an “unknown” verdict with guidance.
+- **OpenAI reasoning-only replies** — GPT‑5 reasoning models returned only reasoning traces without textual content when using `json_schema` response format. We now capture tool-call arguments and use simpler `json_object` response format (instead of strict `json_schema`) for better compatibility with reasoning models. Falls back to an "unknown" verdict when the model withholds textual content.
+- **Gemini rig.rs incompatibility** — Rig's Gemini implementation has deserialization issues with the current Gemini API (missing `generationConfig` field errors). The Gemini API also rejects requests combining forced function calling (ANY mode) with `responseMimeType: 'application/json'`. Solution: Bypassed rig entirely for Gemini; implemented standalone HTTP client using Gemini's native REST API with prompt-based JSON formatting.
+- **Gemini empty responses** — Successful calls can still return empty candidates. Health checks now treat empty responses as warnings instead of hard failures, surfacing an "unknown" verdict with guidance.
 - **Debugging provider quirks** — The global `--debug` flag flips `LLM_GUARD_DEBUG=1`, causing the adapter to log the raw upstream payload whenever parsing fails, making it obvious when prompt/schema updates are needed.
 
 These guardrails keep the CLI resilient even when upstream providers change response contracts mid-flight.

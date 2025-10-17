@@ -4,6 +4,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -64,6 +65,9 @@ impl LlmClient for GeminiClient {
                     )),
                 }],
             }],
+            generation_config: Some(GeminiGenerationConfig {
+                response_mime_type: "application/json".to_string(),
+            }),
         };
 
         let mut attempt = 0u32;
@@ -106,6 +110,15 @@ impl LlmClient for GeminiClient {
                 .json()
                 .await
                 .context("failed to parse Gemini response")?;
+
+            // Always log raw response when debug is enabled
+            if debug_enabled() {
+                tracing::warn!(
+                    "gemini raw response: {}",
+                    serde_json::to_string_pretty(&message).unwrap_or_default()
+                );
+            }
+
             let content = message
                 .candidates
                 .into_iter()
@@ -113,6 +126,11 @@ impl LlmClient for GeminiClient {
                 .filter_map(|part| part.text)
                 .next()
                 .ok_or_else(|| anyhow!("Gemini response missing message content"))?;
+
+            // Log extracted content when debug is enabled
+            if debug_enabled() {
+                tracing::warn!("gemini extracted content: {}", content);
+            }
 
             let verdict: ModelVerdict = serde_json::from_str(&content)
                 .context("expected JSON verdict from Gemini response")?;
@@ -135,9 +153,22 @@ fn truncate(input: &str, max_chars: usize) -> String {
     input.chars().take(max_chars).collect::<String>() + "…"
 }
 
+fn debug_enabled() -> bool {
+    matches!(env::var("LLM_GUARD_DEBUG"), Ok(val) if !val.is_empty() && val != "0")
+}
+
 #[derive(Serialize)]
 struct GeminiRequest {
     contents: Vec<GeminiRequestContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "generationConfig")]
+    generation_config: Option<GeminiGenerationConfig>,
+}
+
+#[derive(Serialize)]
+struct GeminiGenerationConfig {
+    #[serde(rename = "responseMimeType")]
+    response_mime_type: String,
 }
 
 #[derive(Serialize)]
@@ -152,22 +183,22 @@ struct GeminiRequestPart {
     text: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct GeminiResponse {
     candidates: Vec<GeminiCandidate>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct GeminiCandidate {
     content: GeminiResponseContent,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct GeminiResponseContent {
     parts: Vec<GeminiResponsePart>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct GeminiResponsePart {
     #[serde(default)]
     text: Option<String>,
