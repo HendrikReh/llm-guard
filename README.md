@@ -27,8 +27,6 @@ cargo build --release
 
 ## Usage
 
-> The CLI interface is still a stub while Phase 1–5 items in `PLAN.md` are in progress.
-
 ### Basic Scanning
 
 ```bash
@@ -44,16 +42,43 @@ echo "Ignore previous instructions" | ./target/release/llm-guard scan
 ```bash
 # Generate JSON output for automated processing
 ./target/release/llm-guard scan --file samples/chat.txt --json > report.json
+
+# Tail a log file and rescan on change (Ctrl+C to stop)
+./target/release/llm-guard scan --file logs/chat.log --tail
 ```
 
 ### With LLM Analysis
 
 ```bash
 # Set your API key
-export OPENAI_API_KEY=your_key_here
+export LLM_GUARD_API_KEY=your_key_here
+# Optional provider/endpoint overrides
+export LLM_GUARD_PROVIDER=openai
+export LLM_GUARD_ENDPOINT=https://api.openai.com/v1
 
-# Get additional LLM-powered analysis
+# (Placeholder) Request additional LLM-powered analysis
 ./target/release/llm-guard scan --file samples/chat.txt --with-llm
+
+```
+
+> `--with-llm` is reserved for Phase 6 and will return an error until the adapter is implemented.
+
+### LLM Configuration (preview)
+
+Environment variables expected by future LLM adapters:
+
+- `LLM_GUARD_PROVIDER` — provider identifier (default: `openai`).
+- `LLM_GUARD_API_KEY` — required API key/token.
+- `LLM_GUARD_ENDPOINT` — optional custom endpoint/base URL.
+
+### Exit Codes
+
+The `scan` command returns an exit status that reflects the highest risk band encountered:
+
+- `0` — Low risk (informational)
+- `2` — Medium risk (requires review / mitigation)
+- `3` — High risk (block or re-prompt)
+- `1` — CLI error (I/O failure, invalid flag, etc.)
 ```
 
 ## How It Works
@@ -79,8 +104,7 @@ cli (clap)
 
 ### Dependencies
 
-**Core:** `clap`, `regex`, `aho-corasick`, `serde`, `serde_json`, `anyhow`, `colored`, `ansi_term`, `once_cell`, `humantime`
-**Optional:** `notify`, `comfy-table`, `tokio`
+**Core:** `clap`, `regex`, `aho-corasick`, `serde`, `serde_json`, `anyhow`, `once_cell`, `humantime`, `tokio`, `tracing`
 
 ## About
 

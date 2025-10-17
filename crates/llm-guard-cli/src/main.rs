@@ -6,8 +6,8 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use llm_guard_core::{
-    render_report, DefaultScanner, FileRuleRepository, OutputFormat, RiskBand, RuleKind,
-    RuleRepository, Scanner,
+    render_report, DefaultScanner, FileRuleRepository, LlmClient, LlmSettings, NoopLlmClient,
+    OutputFormat, RiskBand, RuleKind, RuleRepository, Scanner,
 };
 use tokio::{
     fs,
@@ -143,12 +143,24 @@ async fn scan_input(
 
     if tail {
         let file = file.ok_or_else(|| anyhow!("--tail requires --file to specify a path"))?;
+        if with_llm {
+            bail!("--with-llm is not supported with --tail yet");
+        }
         tail_file(scanner, file, json).await
     } else {
         let text = read_input(file)
             .await
             .with_context(|| "failed to read input for scanning")?;
-        let report = scanner.scan(&text).await?;
+        let mut report = scanner.scan(&text).await?;
+        if with_llm {
+            let settings = LlmSettings::from_env()?;
+            eprintln!(
+                "LLM adapter for provider `{}` not yet implemented; returning placeholder verdict.",
+                settings.provider
+            );
+            let verdict = NoopLlmClient::default().enrich(&text, &report).await?;
+            report.llm_verdict = Some(verdict);
+        }
         let rendered = render_report(
             &report,
             if json {
