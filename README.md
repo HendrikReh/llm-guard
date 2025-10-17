@@ -209,17 +209,30 @@ max_retries = 3
 ### Architecture
 
 ```
-cli (clap)
-  ├─ reader (stdin | file | tail -f)
-  ├─ scanner
-  │    ├─ rules (regex + aho-corasick)
-  │    ├─ heuristics (weights, windows, caps)
-  │    └─ explain (feature attributions)
-  ├─ llm_adapter (optional)
-  └─ reporters (human / json)
+Workspace Structure:
+├─ llm-guard-core (library)
+│  ├─ scanner (rule loading, pattern matching)
+│  ├─ scoring (heuristics, risk calculation)
+│  └─ types (Rule, Finding, ScanReport)
+└─ llm-guard-cli (binary)
+   ├─ cli (clap argument parsing)
+   ├─ input (stdin, file, tail readers)
+   ├─ output (human/JSON formatters)
+   └─ llm (provider clients via rig.rs)
+
+Detection Pipeline:
+stdin/file → scanner → findings → scoring → optional LLM → report
 ```
 
-**Core Dependencies:** `clap`, `regex`, `aho-corasick`, `serde`, `serde_json`, `anyhow`, `once_cell`, `humantime`, `tokio`, `tracing`, `reqwest`
+**Core Dependencies:** `clap`, `regex`, `aho-corasick`, `serde`, `serde_json`, `anyhow`, `once_cell`, `humantime`, `tokio`, `tracing`, `reqwest`, `rig-core`
+
+**Key Architectural Decisions:**
+- [ADR-0001](./docs/ADR/0001-heuristic-risk-scoring.md): Heuristic-based scoring for transparency
+- [ADR-0002](./docs/ADR/0002-workspace-architecture.md): Core/CLI separation for reusability
+- [ADR-0003](./docs/ADR/0003-optional-llm-integration.md): Multi-provider LLM support
+- [ADR-0004](./docs/ADR/0004-aho-corasick-regex-detection.md): Dual pattern-matching engines
+
+See [`docs/ADR/`](./docs/ADR/) for complete architecture decision records.
 
 ### Detection Strategy
 
@@ -242,6 +255,7 @@ This project includes comprehensive documentation designed for both human develo
 - **[`PRD.md`](./PRD.md)** — Complete Product Requirements Document with technical specifications
 - **[`PLAN.md`](./PLAN.md)** — Implementation roadmap with phase-by-phase progress tracking
 - **[`AGENTS.md`](./AGENTS.md)** — Onboarding guide for AI coding assistants (Rust conventions, patterns, collaboration guidelines)
+- **[`docs/ADR/`](./docs/ADR/)** — Architecture Decision Records documenting key design choices
 
 ## AI-Assisted Development Insights
 
