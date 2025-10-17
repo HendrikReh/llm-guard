@@ -116,7 +116,7 @@ impl RigLlmClient {
         let deployment = settings
             .deployment
             .as_ref()
-            .or_else(|| settings.model.as_ref())
+            .or(settings.model.as_ref())
             .map(|value| value.trim())
             .filter(|value| !value.is_empty())
             .map(|value| value.to_string());
@@ -254,7 +254,11 @@ impl LlmClient for RigLlmClient {
 
         // Log extracted content when debug is enabled
         if debug_enabled() && !trimmed.is_empty() {
-            tracing::warn!("rig {} extracted content: {}", self.config.provider_label, trimmed);
+            tracing::warn!(
+                "rig {} extracted content: {}",
+                self.config.provider_label,
+                trimmed
+            );
         }
 
         if trimmed.is_empty() {
@@ -268,7 +272,8 @@ impl LlmClient for RigLlmClient {
         }
 
         let json_payload = extract_json_payload(trimmed);
-        let verdict = parse_verdict_json(&json_payload, self.config.provider_label, &self.model_id)?;
+        let verdict =
+            parse_verdict_json(&json_payload, self.config.provider_label, &self.model_id)?;
 
         Ok(LlmVerdict {
             label: verdict.label,

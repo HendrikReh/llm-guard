@@ -3,7 +3,7 @@
 > **AI Coding Hackathon Project** | Real-time development progress tracker
 
 **Plan owner:** hendrik.reh@outlook.com
-**Last updated:** 2025-10-17
+**Last updated:** 2025-10-17 (refreshed progress on rig.rs integration and CLI docs)
 **Context:** [AI Coding Accelerator](https://maven.com/nila/ai-coding-accelerator) hackathon
 
 **Status key:** `[ ]` not started • `[~]` in progress • `[x]` done
@@ -13,6 +13,12 @@
 ## About This Plan
 
 This living document tracks implementation progress for the LLM-Guard project, developed through AI-assisted development workflows. Each phase represents a sprint in the hackathon, with tasks designed for incremental delivery and AI collaboration.
+
+### Current Snapshot
+
+- ✅ Core scanner pipeline, reporting, and multi-provider LLM integration (OpenAI, Anthropic, Gemini, Azure via `rig.rs`) are in place.
+- ⚒️ Hardening and DX polish (expanded tests, release documentation) remain open.
+- 🎯 Immediate focus: elevate Phase 7/8 quality tasks and finish the outstanding rig.rs doc/test updates noted in Phase 9.
 
 **Related Documentation:**
 - **[`PRD.md`](./PRD.md)** — Product requirements and technical specifications
@@ -29,7 +35,7 @@ This living document tracks implementation progress for the LLM-Guard project, d
 - [x] Scaffold Cargo workspace per [`AGENTS.md`](./AGENTS.md) conventions (workspace `Cargo.toml`, `.cargo/config.toml`, `rust-toolchain.toml`, `justfile`, lint configs)
 - [x] Configure tooling aliases (`fmt`, `lint`, `test-all`, `cov`, `audit`, `deny`) and CI placeholders
 - [x] Establish repo structure (`src/`, `rules/`, `tests/`, `docs/`, `examples/`) and add `.gitignore`, `README` skeleton
-- [ ] Add pre-commit hooks or documentation for formatting/linting workflow
+- [x] Codify formatting/linting workflow (document `cargo fmt && cargo clippy` and optional pre-commit hooks)
 
 ## Phase 1 — Core Domain Modeling
 
@@ -89,14 +95,14 @@ This living document tracks implementation progress for the LLM-Guard project, d
 - [x] Add request shaping (prompt template, truncation) and response parsing with guardrails/timeouts
 - [x] Provide dry-run/mock adapter for tests; record usage metrics (latency, token count logging via `tracing`)
 - [x] Update CLI flag `--with-llm` to call adapter, support tail streaming, and merge verdicts into `ScanReport`
-- [ ] Add additional providers (e.g., Anthropic, Azure OpenAI, local models) using the `LlmClient` interface
+- [x] Add additional providers (Anthropic, Azure OpenAI, Gemini, noop) using the `LlmClient` interface and `rig.rs`
 
 ## Phase 7 — Quality Engineering
 
 **Goal:** Comprehensive testing and validation
 **AI Collaboration:** Test generation, edge case identification, CI configuration
 
-- [ ] Establish unit, integration (`tests/e2e.rs`), and property-based tests (e.g., fuzz suspicious inputs) aligned with [`AGENTS.md`](./AGENTS.md) testing pyramid
+- [~] Establish unit, integration (`tests/e2e.rs`), and property-based tests (unit/integration complete; property/fuzzing still open)
 - [ ] Configure `cargo-nextest`, coverage (`llvm-cov`), and CI tasks (fmt, lint, test, deny, audit)
 - [ ] Add fixture corpus for common jailbreak patterns and regression cases; automate through snapshot tests (`insta`)
 - [ ] Document security posture (timeouts, redactions) and add assertions preventing panic paths
@@ -116,9 +122,9 @@ This living document tracks implementation progress for the LLM-Guard project, d
 **Goal:** Transition multi-provider orchestration to [`rig.rs`](https://rig.rs/)
 **AI Collaboration:** Adapter refactor, validation, regression testing
 
-- [~] Replace existing LLM adapter wiring with rig.rs (OpenAI, Anthropic, Gemini, Azure now route through the rig adapter; noop remains standalone)
-- [~] Map current provider implementations (Anthropic, Gemini, Azure, noop) into rig.rs abstractions (noop client still separate)
-- [~] Ensure configuration precedence (config → env → flags) is preserved via rig.rs (CLI now exposes deployment/project/workspace overrides and provider profiles)
+- [x] Replace existing LLM adapter wiring with rig.rs (OpenAI, Anthropic, Gemini, Azure now route through the rig adapter; noop remains standalone)
+- [x] Map current provider implementations (Anthropic, Gemini, Azure, noop) into rig.rs abstractions (noop client still separate)
+- [x] Ensure configuration precedence (config → env → flags) is preserved via rig.rs (CLI now exposes deployment/project/workspace overrides and provider profiles)
 - [ ] Update CLI tests and documentation to reflect the new runtime
 
 ---
@@ -166,3 +172,13 @@ This living document tracks implementation progress for the LLM-Guard project, d
 3. Add sub-tasks or notes when scope changes
 4. Reference related documentation ([`PRD.md`](./PRD.md), [`AGENTS.md`](./AGENTS.md)) for details
 5. Mark AI collaboration points to track human-AI workflow patterns
+
+---
+
+### Next Steps (Quick Reference)
+
+1. ⚒️ Advance Phase 7 by introducing coverage/CI automation and exploring property-based fuzz tests.
+2. 📘 Expand Phase 8 documentation (usage guide landing in `docs/USAGE.md` can seed the README refresh).
+3. 🧪 Finalise Phase 9 with refreshed CLI tests demonstrating the rig-backed providers.
+
+Keep this list in sync with the checkboxes above as you iterate.

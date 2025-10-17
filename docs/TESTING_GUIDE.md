@@ -332,6 +332,12 @@ rig-core = { version = "0.22", default-features = false, features = ["rustls-tls
 #!/bin/bash
 # .git/hooks/pre-commit
 
+echo "Formatting..."
+cargo fmt --quiet
+
+echo "Linting..."
+cargo clippy --quiet -- -D warnings
+
 echo "Running tests..."
 cargo test --quiet
 

@@ -15,7 +15,6 @@ use llm_guard_core::{
     ScoreBreakdown,
 };
 use serde::Deserialize;
-use serde_yaml;
 use tokio::{
     fs,
     io::{self, AsyncReadExt},
@@ -112,6 +111,23 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+}
+
+struct ScanOverrides<'a> {
+    provider: Option<&'a str>,
+    model: Option<&'a str>,
+    endpoint: Option<&'a str>,
+    deployment: Option<&'a str>,
+    project: Option<&'a str>,
+    workspace: Option<&'a str>,
+}
+
+struct ScanInputOptions<'a> {
+    file: Option<&'a Path>,
+    json: bool,
+    tail: bool,
+    with_llm: bool,
+    overrides: ScanOverrides<'a>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -431,16 +447,20 @@ async fn run() -> Result<i32> {
             apply_config_overrides(cli.config_file.as_ref())?;
             scan_input(
                 &cli.rules_dir,
-                file.as_deref(),
-                json,
-                tail,
-                with_llm,
-                provider.as_deref(),
-                model.as_deref(),
-                endpoint.as_deref(),
-                deployment.as_deref(),
-                project.as_deref(),
-                workspace.as_deref(),
+                ScanInputOptions {
+                    file: file.as_deref(),
+                    json,
+                    tail,
+                    with_llm,
+                    overrides: ScanOverrides {
+                        provider: provider.as_deref(),
+                        model: model.as_deref(),
+                        endpoint: endpoint.as_deref(),
+                        deployment: deployment.as_deref(),
+                        project: project.as_deref(),
+                        workspace: workspace.as_deref(),
+                    },
+                },
                 &provider_profiles,
             )
             .await
@@ -543,23 +563,30 @@ async fn list_rules(rules_dir: &Path, json: bool) -> Result<()> {
 
 async fn scan_input(
     rules_dir: &Path,
-    file: Option<&Path>,
-    json: bool,
-    tail: bool,
-    with_llm: bool,
-    provider_override: Option<&str>,
-    model_override: Option<&str>,
-    endpoint_override: Option<&str>,
-    deployment_override: Option<&str>,
-    project_override: Option<&str>,
-    workspace_override: Option<&str>,
+    options: ScanInputOptions<'_>,
     provider_profiles: &ProviderProfiles,
 ) -> Result<i32> {
+    let ScanInputOptions {
+        file,
+        json,
+        tail,
+        with_llm,
+        overrides:
+            ScanOverrides {
+                provider,
+                model,
+                endpoint,
+                deployment,
+                project,
+                workspace,
+            },
+    } = options;
+
     let repo = Arc::new(FileRuleRepository::new(rules_dir));
     let scanner = Arc::new(DefaultScanner::new(Arc::clone(&repo)));
 
     let llm_client: Option<Arc<dyn LlmClient>> = if with_llm {
-        let provider_hint = provider_override
+        let provider_hint = provider
             .map(|s| s.to_string())
             .or_else(|| std::env::var("LLM_GUARD_PROVIDER").ok())
             .unwrap_or_else(|| "openai".to_string());
@@ -568,15 +595,15 @@ async fn scan_input(
         let mut settings = match LlmSettings::from_env() {
             Ok(s) => s,
             Err(err) => {
-                if provider_override
+                if provider
                     .map(|p| p.eq_ignore_ascii_case("noop"))
                     .unwrap_or(false)
                 {
                     LlmSettings {
-                        provider: provider_override.unwrap().to_string(),
+                        provider: provider.unwrap().to_string(),
                         api_key: String::new(),
-                        endpoint: endpoint_override.map(|s| s.to_string()),
-                        model: model_override.map(|s| s.to_string()),
+                        endpoint: endpoint.map(|s| s.to_string()),
+                        model: model.map(|s| s.to_string()),
                         deployment: None,
                         project: None,
                         workspace: None,
@@ -589,31 +616,31 @@ async fn scan_input(
                 }
             }
         };
-        if let Some(provider) = provider_override {
-            settings.provider = provider.to_string();
+        if let Some(provider_override) = provider {
+            settings.provider = provider_override.to_string();
         }
         let provider_for_defaults = settings.provider.clone();
         provider_profiles.apply_defaults(&provider_for_defaults, &mut settings);
-        if let Some(model) = model_override {
-            settings.model = Some(model.to_string());
+        if let Some(model_override) = model {
+            settings.model = Some(model_override.to_string());
         }
-        if let Some(endpoint) = endpoint_override {
-            settings.endpoint = Some(endpoint.to_string());
+        if let Some(endpoint_override) = endpoint {
+            settings.endpoint = Some(endpoint_override.to_string());
         }
-        if let Some(deployment) = deployment_override {
-            settings.deployment = Some(deployment.to_string());
+        if let Some(deployment_override) = deployment {
+            settings.deployment = Some(deployment_override.to_string());
         }
         if settings.deployment.is_none() {
             settings.deployment = std::env::var("LLM_GUARD_DEPLOYMENT").ok();
         }
-        if let Some(project) = project_override {
-            settings.project = Some(project.to_string());
+        if let Some(project_override) = project {
+            settings.project = Some(project_override.to_string());
         }
         if settings.project.is_none() {
             settings.project = std::env::var("LLM_GUARD_PROJECT").ok();
         }
-        if let Some(workspace) = workspace_override {
-            settings.workspace = Some(workspace.to_string());
+        if let Some(workspace_override) = workspace {
+            settings.workspace = Some(workspace_override.to_string());
         }
         if settings.workspace.is_none() {
             settings.workspace = std::env::var("LLM_GUARD_WORKSPACE").ok();
