@@ -94,6 +94,10 @@ cargo test --lib
 cargo test --test '*'
 
 # Run tests in specific package
+cargo test -p llm-guard-core
+cargo test -p llm-guard-cli
+
+# Alternative package syntax
 cargo test --package llm-guard-core
 cargo test --package llm-guard-cli
 

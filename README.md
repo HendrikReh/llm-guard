@@ -56,7 +56,7 @@ A fast, explainable **Rust** CLI that scans prompts and logs for **prompt-inject
 
 ## Hackathon Context
 
-This project was developed during the **[AI Coding Accelerator](https://maven.com/nila/ai-coding-accelerator)** hackathon (Maven) as an experiment in **AI-assisted software development**.
+This project was developed during the **[AI Coding Accelerator](https://maven.com/nila/ai-coding-accelerator)** hackathon (Maven) as an experiment in **AI-assisted software development**. The entire project was built in a **single day (~7 hours)** using AI coding assistants.
 
 **Instructors:** [Vignesh Mohankumar](https://x.com/vig_xyz) and [Jason Liu](https://x.com/jxnlco)
 
@@ -207,6 +207,26 @@ export LLM_GUARD_API_VERSION=2024-02-15-preview
 | `LLM_GUARD_API_VERSION` | API version (Azure OpenAI) | Provider default |
 
 **CLI overrides:** Use `--provider`, `--model`, `--endpoint`, `--deployment`, `--project`, and `--workspace` to override these values for a single run without touching environment variables.
+
+**Provider profiles (`llm_providers.yaml`):**
+
+The CLI also looks for an optional `llm_providers.yaml` (override with `--providers-config`). This file lets you store credentials and defaults per provider so you can keep multiple API keys side-by-side. Example:
+
+```yaml
+providers:
+  - name: "openai"
+    api_key: "OPENAI_API_KEY"
+    model: "gpt-4o-mini"
+  - name: "azure"
+    api_key: "AZURE_OPENAI_KEY"
+    endpoint: "https://your-resource.openai.azure.com"
+    deployment: "gpt-4o-production"
+    api_version: "2024-02-15-preview"
+    timeout_secs: 60
+    max_retries: 3
+```
+
+Credentials are merged with environment variables and CLI flags using the usual precedence (flags → env → provider profile). To get started quickly, copy `llm_providers.example.yaml` to `llm_providers.yaml` and replace the placeholder values.
 
 **Loading from `.env` file:**
 
@@ -368,7 +388,7 @@ This project demonstrates a **PRD-driven, multi-agent AI coding workflow** optim
 - **Multi-Agent Specialization:** GPT-5 Codex for implementation + Claude Code for reviews = better outcomes than single agent
 - **Separated Tool Contexts:** Cursor (review) + separate terminals (coding) + Tower (git) created clear mental boundaries
 - **MCP Context Servers:** RepoPrompt provided excellent repository-wide context for Codex CLI
-- **Rust Learning Accelerator:** AI assistants dramatically shortened learning curve for Rust newcomer (zero to functional CLI in days)
+- **Rust Learning Accelerator:** AI assistants dramatically shortened learning curve for Rust newcomer (zero to functional CLI in ~7 hours)
 - **Living Documentation:** [`AGENTS.md`](./AGENTS.md) successfully onboarded AI agents with consistent conventions across sessions
 - **Perplexity for Research:** Quick ramp-up on Rust best practices through targeted research queries
 
@@ -497,12 +517,12 @@ MIT License — see [`LICENSE`](./LICENSE) file for details.
 
 **AI Coding Accelerator Hackathon**
 - **Course:** [Maven's AI Coding Accelerator](https://maven.com/nila/ai-coding-accelerator)
-- **Instructors:** Vignesh Mohankumar and Jason Liu
+- **Instructors:** [Vignesh Mohankumar](https://x.com/vig_xyz) and [Jason Liu](https://x.com/jxnlco)
 - **Focus:** Practical applications of AI coding tools in modern software development
 
 **Tools & Technologies**
-- **AI Agents:** GPT-5 Codex (via Codex CLI), Claude Code (Anthropic)
-- **MCP Servers:** RepoPrompt, Context7
-- **IDE:** Cursor
-- **Research:** Perplexity
-- **Git Client:** Tower
+- **AI Agents:**  [Codex CLI (OpenAI)](https://github.com/openai/codex-cli), [Claude Code (Anthropic)]((https://claude.ai))
+- **MCP Servers:** [RepoPrompt](https://repoprompt.com/), [Context7](https://context7.com/)
+- **IDE:** [Cursor](https://cursor.sh)
+- **Research:** [Perplexity](https://www.perplexity.ai/)
+- **Git Client:** [Tower](https://www.git-tower.com/mac)

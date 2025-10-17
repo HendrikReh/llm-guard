@@ -6,7 +6,8 @@ Cargo.lock
 coverage/
 *.profraw
 *.profdata
-/.DS_Store
+.DS_Store
 /.env
+llm_providers.yaml
 .env.local
 /dist/

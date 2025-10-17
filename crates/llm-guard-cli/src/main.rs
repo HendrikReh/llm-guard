@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::fs as stdfs;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
@@ -10,6 +12,8 @@ use llm_guard_core::{
     build_client, render_report, DefaultScanner, FileRuleRepository, LlmClient, LlmSettings,
     OutputFormat, RiskBand, RuleKind, RuleRepository, Scanner,
 };
+use serde::Deserialize;
+use serde_yaml;
 use tokio::{
     fs,
     io::{self, AsyncReadExt},
@@ -38,6 +42,15 @@ struct Cli {
     /// Optional configuration file providing defaults (TOML/YAML/JSON)
     #[arg(long = "config", value_name = "FILE", global = true)]
     config_file: Option<PathBuf>,
+
+    /// Optional provider configuration file containing per-provider credentials.
+    #[arg(
+        long = "providers-config",
+        value_name = "FILE",
+        default_value = "llm_providers.yaml",
+        global = true
+    )]
+    providers_config: PathBuf,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -86,6 +99,231 @@ enum Commands {
     },
 }
 
+#[derive(Debug, Deserialize, Clone)]
+struct ProviderProfile {
+    name: String,
+    #[serde(default)]
+    api_key: Option<String>,
+    #[serde(default)]
+    endpoint: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    deployment: Option<String>,
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default)]
+    workspace: Option<String>,
+    #[serde(default)]
+    timeout_secs: Option<u64>,
+    #[serde(default)]
+    max_retries: Option<u32>,
+    #[serde(default)]
+    api_version: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct ProviderProfiles {
+    entries: HashMap<String, ProviderProfile>,
+}
+
+impl ProviderProfiles {
+    fn load(path: &Path) -> Result<Self> {
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+
+        let contents = stdfs::read_to_string(path).with_context(|| {
+            format!(
+                "failed to read provider configuration from {}",
+                path.display()
+            )
+        })?;
+
+        if contents.trim().is_empty() {
+            return Ok(Self::default());
+        }
+
+        // Support either a top-level `providers` key or a bare list of profiles.
+        #[derive(Deserialize)]
+        struct ProviderConfigWrapper {
+            providers: Vec<ProviderProfile>,
+        }
+
+        let profiles = match serde_yaml::from_str::<ProviderConfigWrapper>(&contents) {
+            Ok(wrapper) => wrapper.providers,
+            Err(_) => serde_yaml::from_str::<Vec<ProviderProfile>>(&contents)
+                .with_context(|| "invalid provider configuration structure")?,
+        };
+
+        let mut entries = HashMap::new();
+        for profile in profiles {
+            entries.insert(profile.name.to_ascii_lowercase(), profile);
+        }
+
+        Ok(Self { entries })
+    }
+
+    fn prime_env(&self, provider: &str) {
+        if let Some(profile) = self.entries.get(&provider.to_ascii_lowercase()) {
+            maybe_set_env("LLM_GUARD_PROVIDER", Some(provider.to_string()));
+            maybe_set_env("LLM_GUARD_API_KEY", profile.api_key.clone());
+            maybe_set_env("LLM_GUARD_ENDPOINT", profile.endpoint.clone());
+            maybe_set_env("LLM_GUARD_MODEL", profile.model.clone());
+            maybe_set_env("LLM_GUARD_DEPLOYMENT", profile.deployment.clone());
+            maybe_set_env("LLM_GUARD_PROJECT", profile.project.clone());
+            maybe_set_env("LLM_GUARD_WORKSPACE", profile.workspace.clone());
+            maybe_set_env(
+                "LLM_GUARD_TIMEOUT_SECS",
+                profile.timeout_secs.map(|timeout| timeout.to_string()),
+            );
+            maybe_set_env(
+                "LLM_GUARD_MAX_RETRIES",
+                profile.max_retries.map(|retries| retries.to_string()),
+            );
+            maybe_set_env("LLM_GUARD_API_VERSION", profile.api_version.clone());
+        }
+    }
+
+    fn apply_defaults(&self, provider: &str, settings: &mut LlmSettings) {
+        if let Some(profile) = self.entries.get(&provider.to_ascii_lowercase()) {
+            if settings.model.is_none() {
+                settings.model = profile.model.clone();
+            }
+            if settings.deployment.is_none() {
+                settings.deployment = profile.deployment.clone();
+            }
+            if settings.project.is_none() {
+                settings.project = profile.project.clone();
+            }
+            if settings.workspace.is_none() {
+                settings.workspace = profile.workspace.clone();
+            }
+            if settings.timeout_secs.is_none() && std::env::var("LLM_GUARD_TIMEOUT_SECS").is_err() {
+                settings.timeout_secs = profile.timeout_secs;
+            }
+            if let Some(retries) = profile.max_retries {
+                if std::env::var("LLM_GUARD_MAX_RETRIES").is_err() {
+                    settings.max_retries = retries;
+                }
+            }
+            if settings.api_version.is_none() && std::env::var("LLM_GUARD_API_VERSION").is_err() {
+                settings.api_version = profile.api_version.clone();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod provider_config_tests {
+    use super::*;
+    use once_cell::sync::Lazy;
+    use std::collections::HashMap;
+    use std::env;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    fn reset_vars() {
+        env::remove_var("LLM_GUARD_PROVIDER");
+        env::remove_var("LLM_GUARD_API_KEY");
+        env::remove_var("LLM_GUARD_ENDPOINT");
+        env::remove_var("LLM_GUARD_MODEL");
+        env::remove_var("LLM_GUARD_DEPLOYMENT");
+        env::remove_var("LLM_GUARD_PROJECT");
+        env::remove_var("LLM_GUARD_WORKSPACE");
+        env::remove_var("LLM_GUARD_TIMEOUT_SECS");
+        env::remove_var("LLM_GUARD_MAX_RETRIES");
+        env::remove_var("LLM_GUARD_API_VERSION");
+    }
+
+    #[test]
+    fn prime_env_sets_missing_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        reset_vars();
+
+        let profile = ProviderProfile {
+            name: "azure".into(),
+            api_key: Some("azure-key".into()),
+            endpoint: Some("https://example.azure.com".into()),
+            model: Some("gpt-4o".into()),
+            deployment: Some("security-deployment".into()),
+            project: Some("proj".into()),
+            workspace: Some("ws".into()),
+            timeout_secs: Some(45),
+            max_retries: Some(5),
+            api_version: Some("2024-02-01".into()),
+        };
+
+        let mut entries = HashMap::new();
+        entries.insert("azure".into(), profile);
+        let profiles = ProviderProfiles { entries };
+
+        profiles.prime_env("azure");
+
+        assert_eq!(env::var("LLM_GUARD_PROVIDER").unwrap(), "azure");
+        assert_eq!(env::var("LLM_GUARD_API_KEY").unwrap(), "azure-key");
+        assert_eq!(
+            env::var("LLM_GUARD_ENDPOINT").unwrap(),
+            "https://example.azure.com"
+        );
+        assert_eq!(
+            env::var("LLM_GUARD_DEPLOYMENT").unwrap(),
+            "security-deployment"
+        );
+        assert_eq!(env::var("LLM_GUARD_TIMEOUT_SECS").unwrap(), "45");
+        assert_eq!(env::var("LLM_GUARD_MAX_RETRIES").unwrap(), "5");
+        assert_eq!(env::var("LLM_GUARD_API_VERSION").unwrap(), "2024-02-01");
+        reset_vars();
+    }
+
+    #[test]
+    fn apply_defaults_populates_missing_fields() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        reset_vars();
+
+        let profile = ProviderProfile {
+            name: "azure".into(),
+            api_key: Some("azure-key".into()),
+            endpoint: Some("https://example.azure.com".into()),
+            model: Some("gpt-4o".into()),
+            deployment: Some("security-deployment".into()),
+            project: Some("proj".into()),
+            workspace: Some("ws".into()),
+            timeout_secs: Some(60),
+            max_retries: Some(4),
+            api_version: Some("2024-02-01".into()),
+        };
+
+        let mut entries = HashMap::new();
+        entries.insert("azure".into(), profile.clone());
+        let profiles = ProviderProfiles { entries };
+
+        let mut settings = LlmSettings {
+            provider: "azure".into(),
+            api_key: "azure-key".into(),
+            endpoint: profile.endpoint.clone(),
+            model: None,
+            deployment: None,
+            project: None,
+            workspace: None,
+            timeout_secs: None,
+            max_retries: 2,
+            api_version: None,
+        };
+
+        profiles.apply_defaults("azure", &mut settings);
+
+        assert_eq!(settings.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(settings.deployment.as_deref(), Some("security-deployment"));
+        assert_eq!(settings.project.as_deref(), Some("proj"));
+        assert_eq!(settings.workspace.as_deref(), Some("ws"));
+        assert_eq!(settings.timeout_secs, Some(60));
+        assert_eq!(settings.max_retries, 4);
+        assert_eq!(settings.api_version.as_deref(), Some("2024-02-01"));
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     match run().await {
@@ -100,6 +338,7 @@ async fn main() {
 async fn run() -> Result<i32> {
     init_tracing();
     let cli = Cli::parse();
+    let provider_profiles = ProviderProfiles::load(&cli.providers_config)?;
     match cli.command.unwrap_or(Commands::ListRules { json: false }) {
         Commands::ListRules { json } => {
             list_rules(&cli.rules_dir, json).await?;
@@ -130,6 +369,7 @@ async fn run() -> Result<i32> {
                 deployment.as_deref(),
                 project.as_deref(),
                 workspace.as_deref(),
+                &provider_profiles,
             )
             .await
         }
@@ -238,11 +478,18 @@ async fn scan_input(
     deployment_override: Option<&str>,
     project_override: Option<&str>,
     workspace_override: Option<&str>,
+    provider_profiles: &ProviderProfiles,
 ) -> Result<i32> {
     let repo = Arc::new(FileRuleRepository::new(rules_dir));
     let scanner = Arc::new(DefaultScanner::new(Arc::clone(&repo)));
 
     let llm_client: Option<Arc<dyn LlmClient>> = if with_llm {
+        let provider_hint = provider_override
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("LLM_GUARD_PROVIDER").ok())
+            .unwrap_or_else(|| "openai".to_string());
+        provider_profiles.prime_env(&provider_hint);
+
         let mut settings = match LlmSettings::from_env() {
             Ok(s) => s,
             Err(err) => {
@@ -270,6 +517,8 @@ async fn scan_input(
         if let Some(provider) = provider_override {
             settings.provider = provider.to_string();
         }
+        let provider_for_defaults = settings.provider.clone();
+        provider_profiles.apply_defaults(&provider_for_defaults, &mut settings);
         if let Some(model) = model_override {
             settings.model = Some(model.to_string());
         }
