@@ -7,7 +7,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "Apache-2.0 OR MIT"
-authors = ["LLM Guard Team <dev@example.com>"]
+authors = ["LLM Guard Team <hendrik.reh@blacksmith-consulting.ai>"]
 
 [workspace.dependencies]
 anyhow = "1"

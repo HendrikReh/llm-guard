@@ -3,7 +3,7 @@ use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use llm_guard_core::{
     build_client, render_report, DefaultScanner, FileRuleRepository, LlmClient, LlmSettings,
@@ -60,6 +60,15 @@ enum Commands {
         /// Augment heuristic report with LLM verdict (not yet implemented).
         #[arg(long = "with-llm")]
         with_llm: bool,
+        /// Override provider (e.g., openai, anthropic, gemini, noop).
+        #[arg(long)]
+        provider: Option<String>,
+        /// Override model identifier for the selected provider.
+        #[arg(long)]
+        model: Option<String>,
+        /// Override endpoint/base URL for the selected provider.
+        #[arg(long)]
+        endpoint: Option<String>,
     },
 }
 
@@ -87,7 +96,22 @@ async fn run() -> Result<i32> {
             json,
             tail,
             with_llm,
-        } => scan_input(&cli.rules_dir, file.as_deref(), json, tail, with_llm).await,
+            provider,
+            model,
+            endpoint,
+        } => {
+            scan_input(
+                &cli.rules_dir,
+                file.as_deref(),
+                json,
+                tail,
+                with_llm,
+                provider.as_deref(),
+                model.as_deref(),
+                endpoint.as_deref(),
+            )
+            .await
+        }
     }
 }
 
@@ -134,15 +158,43 @@ async fn scan_input(
     json: bool,
     tail: bool,
     with_llm: bool,
+    provider_override: Option<&str>,
+    model_override: Option<&str>,
+    endpoint_override: Option<&str>,
 ) -> Result<i32> {
-    if with_llm {
-        bail!("--with-llm is not implemented yet; stay tuned for Phase 6.");
-    }
     let repo = Arc::new(FileRuleRepository::new(rules_dir));
     let scanner = Arc::new(DefaultScanner::new(Arc::clone(&repo)));
 
     let llm_client: Option<Arc<dyn LlmClient>> = if with_llm {
-        let settings = LlmSettings::from_env()?;
+        let mut settings = match LlmSettings::from_env() {
+            Ok(s) => s,
+            Err(err) => {
+                if provider_override
+                    .map(|p| p.eq_ignore_ascii_case("noop"))
+                    .unwrap_or(false)
+                {
+                    LlmSettings {
+                        provider: provider_override.unwrap().to_string(),
+                        api_key: String::new(),
+                        endpoint: endpoint_override.map(|s| s.to_string()),
+                        model: model_override.map(|s| s.to_string()),
+                        timeout_secs: Some(30),
+                        max_retries: 2,
+                    }
+                } else {
+                    return Err(err);
+                }
+            }
+        };
+        if let Some(provider) = provider_override {
+            settings.provider = provider.to_string();
+        }
+        if let Some(model) = model_override {
+            settings.model = Some(model.to_string());
+        }
+        if let Some(endpoint) = endpoint_override {
+            settings.endpoint = Some(endpoint.to_string());
+        }
         let client = build_client(&settings)?;
         Some(client.into())
     } else {

@@ -7,59 +7,62 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
-pub struct AnthropicClient {
+pub struct GeminiClient {
     http: Client,
     url: String,
     api_key: String,
-    model: String,
     max_retries: u32,
 }
 
-impl AnthropicClient {
+impl GeminiClient {
     pub fn new(settings: &LlmSettings) -> Result<Self> {
         if settings.api_key.trim().is_empty() {
-            bail!("Anthropic API key must be provided via LLM_GUARD_API_KEY");
+            bail!("Gemini API key must be provided via LLM_GUARD_API_KEY");
         }
         let base = settings
             .endpoint
             .clone()
-            .unwrap_or_else(|| "https://api.anthropic.com".to_string());
-        let url = format!("{}/v1/messages", base.trim_end_matches('/'));
+            .unwrap_or_else(|| "https://generativelanguage.googleapis.com".to_string());
+        let model = settings
+            .model
+            .clone()
+            .unwrap_or_else(|| "gemini-1.5-flash".to_string());
+        let url = format!(
+            "{}/v1beta/models/{}:generateContent",
+            base.trim_end_matches('/'),
+            model
+        );
         let http = Client::builder()
             .user_agent("llm-guard/0.1")
             .timeout(Duration::from_secs(settings.timeout_secs.unwrap_or(30)))
             .build()
-            .context("failed to build Anthropic HTTP client")?;
+            .context("failed to build Gemini HTTP client")?;
         Ok(Self {
             http,
             url,
             api_key: settings.api_key.clone(),
-            model: settings
-                .model
-                .clone()
-                .unwrap_or_else(|| "claude-3-haiku-20240307".to_string()),
             max_retries: settings.max_retries,
         })
     }
 }
 
 #[async_trait]
-impl LlmClient for AnthropicClient {
+impl LlmClient for GeminiClient {
     async fn enrich(&self, input: &str, report: &ScanReport) -> Result<LlmVerdict> {
-        let payload = AnthropicRequest {
-            model: self.model.clone(),
-            system: SYSTEM_PROMPT.to_string(),
-            messages: vec![AnthropicMessage {
+        let payload = GeminiRequest {
+            contents: vec![GeminiRequestContent {
                 role: "user".into(),
-                content: format!(
-                    "Input excerpt:\n{}\n\nScore: {:.1} ({:?})\nTop findings: {}\n",
-                    truncate(input, 2000),
-                    report.risk_score,
-                    report.risk_band,
-                    serde_json::to_string(&report.findings).unwrap_or_default()
-                ),
+                parts: vec![GeminiRequestPart {
+                    text: Some(format!(
+                        "{}\n\nInput excerpt:\n{}\n\nScore: {:.1} ({:?})\nTop findings: {}\n",
+                        SYSTEM_PROMPT,
+                        truncate(input, 2000),
+                        report.risk_score,
+                        report.risk_band,
+                        serde_json::to_string(&report.findings).unwrap_or_default()
+                    )),
+                }],
             }],
-            max_tokens: 200,
         };
 
         let mut attempt = 0u32;
@@ -67,8 +70,7 @@ impl LlmClient for AnthropicClient {
             let response = self
                 .http
                 .post(&self.url)
-                .header("x-api-key", &self.api_key)
-                .header("anthropic-version", "2023-06-01")
+                .query(&[("key", &self.api_key)])
                 .json(&payload)
                 .send()
                 .await;
@@ -77,7 +79,7 @@ impl LlmClient for AnthropicClient {
                 Ok(resp) => resp,
                 Err(err) => {
                     if attempt >= self.max_retries {
-                        return Err(err).context("failed to call Anthropic messages API");
+                        return Err(err).context("failed to call Gemini generateContent API");
                     }
                     attempt += 1;
                     continue;
@@ -88,24 +90,26 @@ impl LlmClient for AnthropicClient {
                 if attempt >= self.max_retries {
                     let status = response.status();
                     let body = response.text().await.unwrap_or_default();
-                    bail!("Anthropic API error ({}): {}", status, body);
+                    bail!("Gemini API error ({}): {}", status, body);
                 }
                 attempt += 1;
                 continue;
             }
 
-            let message: AnthropicResponse = response
+            let message: GeminiResponse = response
                 .json()
                 .await
-                .context("failed to parse Anthropic response")?;
+                .context("failed to parse Gemini response")?;
             let content = message
-                .content
+                .candidates
                 .into_iter()
-                .find_map(|part| part.text)
-                .ok_or_else(|| anyhow!("Anthropic response missing message content"))?;
+                .flat_map(|candidate| candidate.content.parts)
+                .filter_map(|part| part.text)
+                .next()
+                .ok_or_else(|| anyhow!("Gemini response missing message content"))?;
 
             let verdict: ModelVerdict = serde_json::from_str(&content)
-                .context("expected JSON verdict from Anthropic response")?;
+                .context("expected JSON verdict from Gemini response")?;
 
             return Ok(LlmVerdict {
                 label: verdict.label,
@@ -126,28 +130,39 @@ fn truncate(input: &str, max_chars: usize) -> String {
 }
 
 #[derive(Serialize)]
-struct AnthropicRequest {
-    model: String,
-    system: String,
-    messages: Vec<AnthropicMessage>,
-    max_tokens: u32,
+struct GeminiRequest {
+    contents: Vec<GeminiRequestContent>,
 }
 
 #[derive(Serialize)]
-struct AnthropicMessage {
+struct GeminiRequestContent {
     role: String,
-    content: String,
+    parts: Vec<GeminiRequestPart>,
+}
+
+#[derive(Serialize)]
+struct GeminiRequestPart {
+    #[serde(default)]
+    text: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct AnthropicResponse {
-    content: Vec<AnthropicContent>,
+struct GeminiResponse {
+    candidates: Vec<GeminiCandidate>,
 }
 
 #[derive(Deserialize)]
-struct AnthropicContent {
-    #[serde(rename = "type")]
-    _type: String,
+struct GeminiCandidate {
+    content: GeminiResponseContent,
+}
+
+#[derive(Deserialize)]
+struct GeminiResponseContent {
+    parts: Vec<GeminiResponsePart>,
+}
+
+#[derive(Deserialize)]
+struct GeminiResponsePart {
     #[serde(default)]
     text: Option<String>,
 }
@@ -165,13 +180,14 @@ mod tests {
     use crate::llm::settings::LlmSettings;
     use crate::scanner::{RiskThresholds, ScanReport, ScoreBreakdown};
     use httpmock::prelude::*;
+    use serde_json::json;
 
     fn base_settings(url: String) -> LlmSettings {
         LlmSettings {
-            provider: "anthropic".into(),
+            provider: "gemini".into(),
             api_key: "test-key".into(),
             endpoint: Some(url),
-            model: Some("claude-test".into()),
+            model: Some("gemini-test".into()),
             timeout_secs: Some(5),
             max_retries: 0,
         }
@@ -193,14 +209,25 @@ mod tests {
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
             when.method(POST)
-                .path("/v1/messages")
-                .header("x-api-key", "test-key");
+                .path("/v1beta/models/gemini-test:generateContent")
+                .query_param("key", "test-key");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(r#"{"content":[{"type":"text","text":"{\"label\":\"safe\",\"rationale\":\"ok\",\"mitigation\":\"none\"}"}]}"#);
+                .json_body(json!({
+                    "candidates": [
+                        {
+                            "content": {
+                                "role": "model",
+                                "parts": [
+                                    {"text": "{\"label\":\"safe\",\"rationale\":\"ok\",\"mitigation\":\"none\"}"}
+                                ]
+                            }
+                        }
+                    ]
+                }));
         });
 
-        let client = AnthropicClient::new(&base_settings(server.base_url())).unwrap();
+        let client = GeminiClient::new(&base_settings(server.base_url())).unwrap();
         let verdict = client.enrich("hello", &empty_report()).await.unwrap();
         assert_eq!(verdict.label, "safe");
         assert_eq!(verdict.rationale, "ok");
@@ -213,15 +240,17 @@ mod tests {
     async fn retries_on_failure() {
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
-            when.method(POST).path("/v1/messages");
+            when.method(POST)
+                .path("/v1beta/models/gemini-test:generateContent")
+                .query_param("key", "test-key");
             then.status(500);
         });
 
         let mut settings = base_settings(server.base_url());
         settings.max_retries = 1;
-        let client = AnthropicClient::new(&settings).unwrap();
+        let client = GeminiClient::new(&settings).unwrap();
         let err = client.enrich("hello", &empty_report()).await.unwrap_err();
-        assert!(err.to_string().contains("Anthropic API error"));
+        assert!(err.to_string().contains("Gemini API error"));
         mock.assert_hits(2);
     }
 

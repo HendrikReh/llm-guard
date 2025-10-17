@@ -1,5 +1,11 @@
 # LLM-Guard — Prompt Injection Firewall
 
+[![Build Status](https://img.shields.io/github/actions/workflow/status/HendrikReh/llm-guard/ci.yml?branch=main)](https://github.com/HendrikReh/llm-guard/actions)
+[![Crates.io](https://img.shields.io/crates/v/llm-guard)](https://crates.io/crates/llm-guard)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
+[![AI Coding Hackathon](https://img.shields.io/badge/AI%20Coding-Hackathon-purple)](https://maven.com/nila/ai-coding-accelerator)
+
 > **AI Coding Hackathon Project** | Experimenting with AI-assisted development workflows
 
 A fast, explainable **Rust** CLI that scans prompts and logs for **prompt-injection & jailbreak indicators**, scores the risk (0–100), and optionally asks an LLM for a short verdict and mitigation tip.
@@ -106,17 +112,21 @@ export LLM_GUARD_ENDPOINT=https://api.openai.com
 export LLM_GUARD_MODEL=gpt-4o-mini
 ./target/release/llm-guard scan --file samples/chat.txt --with-llm
 
+# Switch provider and model via CLI overrides
+./target/release/llm-guard scan --file samples/chat.txt --with-llm \
+  --provider anthropic --model claude-3-haiku-20240307
+
 # Tail a log while enriching with LLM verdicts
 ./target/release/llm-guard scan --file logs/chat.log --tail --with-llm
 
-> `--with-llm` currently supports the OpenAI chat completions API (default provider) and Anthropic Messages API. Set `LLM_GUARD_PROVIDER=noop` to disable external calls while retaining heuristic output.
+> `--with-llm` currently supports the OpenAI chat completions API (default provider), Anthropic Messages API, and Google Gemini API. Set `LLM_GUARD_PROVIDER=noop` to disable external calls while retaining heuristic output.
 ```
 
 > Set `LLM_GUARD_PROVIDER=noop` to run locally without calling an external service (returns heuristic-only verdicts).
 
 **LLM Environment Variables:**
 
-- `LLM_GUARD_PROVIDER` — provider identifier (`openai` by default; `anthropic`, `noop` also supported).
+- `LLM_GUARD_PROVIDER` — provider identifier (`openai` by default; `anthropic`, `gemini`, `noop` supported).
 - `LLM_GUARD_API_KEY` — required API key/token for real providers.
 - `LLM_GUARD_ENDPOINT` — optional custom endpoint/base URL (defaults to the provider's public API).
 - `LLM_GUARD_MODEL` — optional model name (e.g., `gpt-4o-mini`).
@@ -174,27 +184,112 @@ This project includes comprehensive documentation designed for both human develo
 
 ## AI-Assisted Development Insights
 
+### Development Workflow (Hendrik's Approach)
+
+This project demonstrates a **PRD-driven, multi-agent AI coding workflow** optimized for rapid prototyping while maintaining quality:
+
+#### 1. Requirements & Planning Phase
+
+**PRD Development:**
+- Initial PRD drafted and refined collaboratively with **GPT-4** (o3-mini model)
+- Final review and discussion round with **Claude Code** for technical feasibility
+- Result: [`PRD.md`](./PRD.md) serves as single source of truth for all AI agents
+
+**Best Practices Research:**
+- Used **Perplexity** to research Rust development best practices (as a Rust newbie needing a headstart)
+- Created [`AGENTS.md`](./AGENTS.md) as onboarding document based on research findings
+- This document enables any AI agent to understand project conventions quickly
+
+#### 2. Development Environment Setup
+
+**IDE Configuration:**
+- **Primary IDE:** Cursor (with Codex CLI integration)
+- **Secondary terminal:** Claude Code running in separate terminal within Cursor
+- **Use case split:** Cursor for code review and monitoring while agents work
+
+**MCP Server Integration:**
+- **RepoPrompt MCP:** Heavily used by Codex CLI for repository-aware code generation
+- **Context7 MCP:** Configured but minimal usage observed by agents
+- **Observation:** Different agents leverage different context sources based on their architectures
+
+#### 3. Coding & Implementation
+
+**Primary Agent: GPT-4 Codex (via Codex CLI)**
+- Main workhorse for feature implementation
+- Leverages RepoPrompt MCP for repository context
+- Handles majority of Rust code generation
+
+**Secondary Agent: Claude Code (Claude 3.5 Sonnet)**
+- Used for complex architectural decisions
+- Documentation refinement and technical reviews
+- Handles nuanced discussions about design trade-offs
+
+**Workflow Pattern:**
+```
+PRD task → Codex CLI implementation → Claude Code review → Human review → Commit
+```
+
+#### 4. Review & Version Control
+
+**Code Review Process:**
+- Review AI-generated code and documentation in **Tower** (Git client)
+- Separate review context from coding environment
+- Enables focused evaluation of changes before committing
+
+**Quality Gates:**
+- All AI output reviewed before commit
+- Tests run locally before pushing
+- Documentation verified for accuracy
+
 ### What Worked Well
 
-- **Rapid prototyping:** AI assistants accelerated initial scaffolding and boilerplate
-- **Documentation generation:** PRD and technical docs created collaboratively with high quality
-- **Pattern application:** AI effectively applied Rust idioms and best practices
-- **Iterative refinement:** Fast feedback loops for architecture and design decisions
+- **PRD-first approach:** Clear requirements enabled consistent AI contributions across multiple agents
+- **Multi-agent collaboration:** GPT-4 Codex for implementation, Claude Code for architecture discussions
+- **Separated concerns:** Cursor for review, dedicated terminals for coding agents
+- **MCP integration:** RepoPrompt provided strong repository context for Codex CLI
+- **Rust as learning project:** AI assistants accelerated learning curve for Rust newcomer
+- **Documentation as agent onboarding:** `AGENTS.md` successfully guided AI agents on conventions
 
 ### Challenges & Learnings
 
-- **Context management:** Large codebases require careful context window management
-- **Testing rigor:** AI-generated tests need human review for edge case coverage
-- **Architectural consistency:** Human oversight crucial for maintaining coherent system design
-- **Domain knowledge:** Security-specific logic benefits from human expertise
+**Context Management:**
+- Different agents used different context sources (RepoPrompt vs manual context)
+- Context7 MCP underutilized—agents didn't fully leverage this tool
+- Large codebases require explicit context window management strategies
+
+**Agent Specialization:**
+- Codex CLI excelled at implementation but needed guidance on architecture
+- Claude Code better at high-level design discussions and documentation
+- Combining agents created better outcomes than using either alone
+
+**Testing & Validation:**
+- AI-generated tests needed human review for edge case coverage
+- Security-critical code required extra scrutiny (domain expertise matters)
+- Property-based test suggestions from AI were hit-or-miss
+
+**Workflow Friction:**
+- Context switching between multiple tools (Cursor, terminals, Tower) added overhead
+- MCP server configuration not transparent—hard to know when/how agents use them
+- Async agent work (waiting for completions) created workflow gaps
 
 ### Recommendations for AI-Assisted Projects
 
+**Setup & Tooling:**
 1. **Start with clear requirements:** Detailed PRDs (like [`PRD.md`](./PRD.md)) enable better AI contributions
 2. **Use structured documentation:** Files like [`AGENTS.md`](./AGENTS.md) help AI assistants onboard quickly
-3. **Iterate incrementally:** Small, testable changes work better than large refactors
-4. **Review critically:** Treat AI output as thoughtful first drafts, not final code
-5. **Maintain human agency:** Keep humans in the loop for architecture and security decisions
+3. **Configure MCP servers:** RepoPrompt and Context7 provide valuable context, but monitor usage
+4. **Separate review environment:** Use dedicated tool (like Tower) for code review away from coding environment
+
+**Workflow Optimization:**
+5. **Multi-agent approach:** Use different AI models for their strengths (implementation vs architecture)
+6. **Iterate incrementally:** Small, testable changes work better than large refactors
+7. **Review critically:** Treat AI output as thoughtful first drafts, not final code
+8. **Maintain human agency:** Keep humans in the loop for architecture and security decisions
+
+**For Rust Newcomers:**
+9. **Leverage AI for learning:** AI agents can teach language idioms while implementing features
+10. **Research best practices first:** Use Perplexity/search to understand ecosystem before coding
+11. **Create onboarding docs:** Document conventions so AI agents stay consistent across sessions
 
 ## Contributing
 

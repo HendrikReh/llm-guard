@@ -1,4 +1,5 @@
 mod anthropic;
+mod gemini;
 mod openai;
 mod settings;
 
@@ -8,6 +9,7 @@ use async_trait::async_trait;
 use crate::scanner::{LlmVerdict, ScanReport};
 
 pub use anthropic::AnthropicClient;
+pub use gemini::GeminiClient;
 pub use openai::OpenAiClient;
 pub use settings::LlmSettings;
 
@@ -38,6 +40,7 @@ pub fn build_client(settings: &LlmSettings) -> Result<Box<dyn LlmClient>> {
         "noop" => Ok(Box::new(NoopLlmClient::default())),
         "openai" | "open-ai" => Ok(Box::new(OpenAiClient::new(settings)?)),
         "anthropic" | "claude" => Ok(Box::new(AnthropicClient::new(settings)?)),
+        "gemini" | "google" | "google-gemini" => Ok(Box::new(GeminiClient::new(settings)?)),
         other => bail!("unsupported LLM provider `{}`", other),
     }
 }
