@@ -149,6 +149,8 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 struct Cli {
+    #[arg(long)]
+    config: Option<PathBuf>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -173,6 +175,8 @@ enum Commands {
     },
 }
 ```
+
+> CLI precedence: config file (`--config`) → environment variables (`LLM_GUARD_*`) → explicit flags.
 
 ---
 

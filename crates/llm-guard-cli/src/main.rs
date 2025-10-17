@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
+use config::Config;
 use llm_guard_core::{
     build_client, render_report, DefaultScanner, FileRuleRepository, LlmClient, LlmSettings,
     OutputFormat, RiskBand, RuleKind, RuleRepository, Scanner,
@@ -33,6 +34,10 @@ struct Cli {
         global = true
     )]
     rules_dir: PathBuf,
+
+    /// Optional configuration file providing defaults (TOML/YAML/JSON)
+    #[arg(long = "config", value_name = "FILE", global = true)]
+    config_file: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -100,6 +105,7 @@ async fn run() -> Result<i32> {
             model,
             endpoint,
         } => {
+            apply_config_overrides(cli.config_file.as_ref())?;
             scan_input(
                 &cli.rules_dir,
                 file.as_deref(),
@@ -112,6 +118,46 @@ async fn run() -> Result<i32> {
             )
             .await
         }
+    }
+}
+
+fn apply_config_overrides(config_path: Option<&PathBuf>) -> Result<()> {
+    let Some(path) = config_path else {
+        return Ok(());
+    };
+    let settings = Config::builder()
+        .add_source(config::File::from(path.as_path()))
+        .build()
+        .context("failed to load configuration file")?;
+
+    maybe_set_env(
+        "LLM_GUARD_PROVIDER",
+        settings.get_string("llm.provider").ok(),
+    );
+    maybe_set_env("LLM_GUARD_API_KEY", settings.get_string("llm.api_key").ok());
+    maybe_set_env(
+        "LLM_GUARD_ENDPOINT",
+        settings.get_string("llm.endpoint").ok(),
+    );
+    maybe_set_env("LLM_GUARD_MODEL", settings.get_string("llm.model").ok());
+    maybe_set_env(
+        "LLM_GUARD_TIMEOUT_SECS",
+        settings.get_string("llm.timeout_secs").ok(),
+    );
+    maybe_set_env(
+        "LLM_GUARD_MAX_RETRIES",
+        settings.get_string("llm.max_retries").ok(),
+    );
+
+    Ok(())
+}
+
+fn maybe_set_env(var: &str, value: Option<String>) {
+    if std::env::var(var).is_ok() {
+        return;
+    }
+    if let Some(value) = value {
+        std::env::set_var(var, value);
     }
 }
 

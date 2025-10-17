@@ -1,10 +1,22 @@
 # LLM-Guard — Prompt Injection Firewall
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/HendrikReh/llm-guard/ci.yml?branch=main)](https://github.com/HendrikReh/llm-guard/actions)
-[![Crates.io](https://img.shields.io/crates/v/llm-guard)](https://crates.io/crates/llm-guard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/HendrikReh/llm-guard/pulls)
 [![AI Coding Hackathon](https://img.shields.io/badge/AI%20Coding-Hackathon-purple)](https://maven.com/nila/ai-coding-accelerator)
+
+**LLM Provider Support:**
+[![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://openai.com)
+[![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://anthropic.com)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev)
+
+**Built With AI Tools:**
+[![Cursor](https://img.shields.io/badge/Cursor-000000?logo=visual-studio-code&logoColor=white)](https://cursor.sh)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://claude.ai)
+[![Codex CLI](https://img.shields.io/badge/Codex_CLI-412991?logo=openai&logoColor=white)](https://github.com/openai/codex-cli)
+[![RepoPrompt MCP](https://img.shields.io/badge/RepoPrompt-MCP-orange)](https://github.com/modelcontextprotocol/servers)
+[![Context7 MCP](https://img.shields.io/badge/Context7-MCP-orange)](https://github.com/modelcontextprotocol/servers)
 
 > **AI Coding Hackathon Project** | Experimenting with AI-assisted development workflows
 
@@ -156,6 +168,22 @@ export LLM_GUARD_MODEL=gpt-4o-mini
 # Export all variables from .env file
 set -a && source .env && set +a
 ./target/release/llm-guard scan --file samples/chat.txt --with-llm
+```
+
+**Using a configuration file:**
+
+```toml
+# llm-config.toml
+[llm]
+provider = "anthropic"
+model = "claude-3-haiku-20240307"
+endpoint = "https://api.anthropic.com"
+timeout_secs = 45
+max_retries = 3
+```
+
+```bash
+./target/release/llm-guard --config llm-config.toml scan --with-llm --file prompt.txt
 ```
 
 ## Technical Overview

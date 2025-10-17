@@ -13,7 +13,9 @@ tracing-subscriber.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 llm-guard-core = { path = "../llm-guard-core" }
+config.workspace = true
 
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+tempfile = "3"
