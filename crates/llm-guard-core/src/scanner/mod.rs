@@ -9,6 +9,22 @@ pub mod file_repository;
 
 pub type Span = (usize, usize);
 
+/// Thresholds that map numeric scores into qualitative risk bands.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RiskThresholds {
+    pub medium: f32,
+    pub high: f32,
+}
+
+impl Default for RiskThresholds {
+    fn default() -> Self {
+        Self {
+            medium: 25.0,
+            high: 60.0,
+        }
+    }
+}
+
 /// Classification buckets for overall risk scoring.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -21,10 +37,17 @@ pub enum RiskBand {
 impl RiskBand {
     /// Map a numeric risk score (0–100) into a risk band.
     pub fn from_score(score: f32) -> Self {
-        match score {
-            s if s >= 60.0 => Self::High,
-            s if s >= 25.0 => Self::Medium,
-            _ => Self::Low,
+        Self::from_score_with_thresholds(score, &RiskThresholds::default())
+    }
+
+    /// Map a numeric risk score using caller-provided thresholds.
+    pub fn from_score_with_thresholds(score: f32, thresholds: &RiskThresholds) -> Self {
+        if score >= thresholds.high {
+            Self::High
+        } else if score >= thresholds.medium {
+            Self::Medium
+        } else {
+            Self::Low
         }
     }
 }
@@ -172,6 +195,63 @@ pub struct ScanReport {
     pub normalized_len: usize,
     pub risk_band: RiskBand,
     pub llm_verdict: Option<LlmVerdict>,
+    pub score_breakdown: ScoreBreakdown,
+}
+
+/// Contribution of a rule family (prefix before `_`) toward the overall score.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FamilyContribution {
+    pub family: String,
+    pub occurrences: usize,
+    pub raw_weight: f32,
+    pub adjusted_weight: f32,
+}
+
+/// Rich scoring metadata supporting explainability and downstream reporting.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ScoreBreakdown {
+    pub raw_total: f32,
+    pub adjusted_total: f32,
+    pub length_factor: f32,
+    pub family_contributions: Vec<FamilyContribution>,
+}
+
+impl ScoreBreakdown {
+    pub fn risk_score(&self) -> f32 {
+        (self.adjusted_total * self.length_factor).clamp(0.0, 100.0)
+    }
+}
+
+/// Tunable configuration for the risk scoring heuristic.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RiskConfig {
+    pub thresholds: RiskThresholds,
+    pub baseline_chars: usize,
+    pub min_length_factor: f32,
+    pub max_length_factor: f32,
+    pub family_dampening: f32,
+}
+
+impl Default for RiskConfig {
+    fn default() -> Self {
+        Self {
+            thresholds: RiskThresholds::default(),
+            baseline_chars: 800,
+            min_length_factor: 0.5,
+            max_length_factor: 1.5,
+            family_dampening: 0.5,
+        }
+    }
+}
+
+impl RiskConfig {
+    pub fn length_factor(&self, text_len: usize) -> f32 {
+        if self.baseline_chars == 0 {
+            return 1.0;
+        }
+        let raw = text_len as f32 / self.baseline_chars as f32;
+        raw.clamp(self.min_length_factor, self.max_length_factor)
+    }
 }
 
 impl ScanReport {
@@ -181,6 +261,7 @@ impl ScanReport {
         findings: Vec<Finding>,
         normalized_len: usize,
         llm_verdict: Option<LlmVerdict>,
+        score_breakdown: ScoreBreakdown,
     ) -> Self {
         let clamped_score = risk_score.clamp(0.0, 100.0);
         Self {
@@ -189,6 +270,25 @@ impl ScanReport {
             findings,
             normalized_len,
             llm_verdict,
+            score_breakdown,
+        }
+    }
+
+    pub fn from_breakdown(
+        findings: Vec<Finding>,
+        normalized_len: usize,
+        llm_verdict: Option<LlmVerdict>,
+        breakdown: ScoreBreakdown,
+        thresholds: &RiskThresholds,
+    ) -> Self {
+        let risk_score = breakdown.risk_score();
+        Self {
+            risk_band: RiskBand::from_score_with_thresholds(risk_score, thresholds),
+            risk_score,
+            findings,
+            normalized_len,
+            llm_verdict,
+            score_breakdown: breakdown,
         }
     }
 }
@@ -275,7 +375,19 @@ mod tests {
 
     #[test]
     fn scan_report_clamps_scores() {
-        let report = ScanReport::new(120.0, vec![], 128, None);
+        let breakdown = ScoreBreakdown {
+            raw_total: 120.0,
+            adjusted_total: 120.0,
+            length_factor: 1.2,
+            family_contributions: Vec::new(),
+        };
+        let report = ScanReport::from_breakdown(
+            Vec::new(),
+            128,
+            None,
+            breakdown,
+            &RiskThresholds::default(),
+        );
         assert!((report.risk_score - 100.0).abs() < f32::EPSILON);
         assert_eq!(report.risk_band, RiskBand::High);
     }
