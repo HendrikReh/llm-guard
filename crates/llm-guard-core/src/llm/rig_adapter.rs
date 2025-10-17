@@ -615,4 +615,20 @@ mod tests {
         assert!(verdict.rationale.contains("anthropic"));
         assert!(!verdict.mitigation.is_empty());
     }
+
+    #[test]
+    fn parse_verdict_returns_fallback_for_invalid_json() {
+        let verdict =
+            parse_verdict_json("not-json", "openai", "gpt-test").expect("should fallback");
+        assert_eq!(verdict.label, "unknown");
+        assert!(verdict.rationale.contains("openai"));
+    }
+
+    #[test]
+    fn truncate_adds_ellipsis_when_exceeding_limit() {
+        let long = "abcdefghijklmnopqrstuvwxyz";
+        let truncated = truncate(long, 10);
+        assert!(truncated.ends_with('…'));
+        assert_eq!(truncated.chars().count(), 11);
+    }
 }

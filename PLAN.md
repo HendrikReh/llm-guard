@@ -177,8 +177,8 @@ This living document tracks implementation progress for the LLM-Guard project, d
 
 ### Next Steps (Quick Reference)
 
-1. ⚒️ Advance Phase 7 with remaining fuzzing (streaming ingestion edge cases, LLM adapter mocks).
-2. 📘 Expand Phase 8 documentation (usage guide landing in `docs/USAGE.md` can seed the README refresh).
+1. ⚒️ Advance Phase 7 with remaining fuzzing (tail CLI edge cases, LLM mock fallbacks, health command coverage).
+2. 📘 Expand Phase 8 documentation (embed rig screenshots, add FAQ/troubleshooting, refresh README examples).
 3. 🧪 Finalise Phase 9 with refreshed CLI tests demonstrating the rig-backed providers.
 
 Keep this list in sync with the checkboxes above as you iterate.

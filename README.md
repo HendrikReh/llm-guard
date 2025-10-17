@@ -208,11 +208,10 @@ export LLM_GUARD_API_VERSION=2024-02-15-preview
   --provider noop
 
 # Debug mode (dump raw provider verdict payloads on parse errors)
-./target/release/llm-guard scan --file samples/chat.txt --with-llm \
-  --provider anthropic --debug
+./target/release/llm-guard --debug scan --file samples/chat.txt --with-llm
 
-# Health check against configured providers (uses llm_providers.yaml if present)
-./target/release/llm-guard health --providers-config llm_providers.yaml
+# Rig-backed health diagnostics (respects llm_providers.yaml overrides)
+./target/release/llm-guard --debug health --provider openai
 ```
 
 **Streaming Mode:**

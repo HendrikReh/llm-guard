@@ -472,6 +472,16 @@ llm-guard scan --file /var/log/chatbot.log --tail --with-llm --json | \
 
 ---
 
+## Rig Provider Troubleshooting
+
+- **`API key must be provided`** — Ensure `LLM_GUARD_API_KEY` (or provider profile entry) is set and non-empty. Noop provider is the only exception.
+- **`requires endpoint` (Azure)** — Supply `--endpoint` or `LLM_GUARD_ENDPOINT` pointing to your Azure resource (e.g., `https://example.openai.azure.com`).
+- **`requires deployment`** — Provide `--deployment`/`LLM_GUARD_DEPLOYMENT` or reuse `--model` as the deployment name.
+- **Empty or non-JSON verdicts** — Enable `--debug` to log raw provider responses; the rig adapter will fall back to an "unknown" verdict rather than panic.
+- **HTTP 401/403** — Regenerate API keys or confirm tenant/project values (Anthropic/Gemini frequently require project/workspace settings).
+
+---
+
 ## Related Documentation
 
 - **[README.md](../README.md)** — Project overview, features, and AI workflow insights
