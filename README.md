@@ -134,6 +134,14 @@ export LLM_GUARD_MODEL=gpt-4o-mini
 ./target/release/llm-guard scan --file samples/chat.txt --with-llm \
   --provider gemini --model gemini-1.5-flash
 
+# Azure OpenAI
+export LLM_GUARD_PROVIDER=azure
+export LLM_GUARD_API_KEY=your_azure_key
+export LLM_GUARD_ENDPOINT=https://your-resource.openai.azure.com
+export LLM_GUARD_MODEL=your-deployment
+export LLM_GUARD_API_VERSION=2024-02-15-preview
+./target/release/llm-guard scan --file samples/chat.txt --with-llm
+
 # Dry-run mode (no external API calls)
 ./target/release/llm-guard scan --file samples/chat.txt --with-llm \
   --provider noop
@@ -161,6 +169,7 @@ export LLM_GUARD_MODEL=gpt-4o-mini
 | `LLM_GUARD_MODEL` | Model name (e.g., `gpt-4o-mini`) | Provider default |
 | `LLM_GUARD_TIMEOUT_SECS` | HTTP timeout in seconds | `30` |
 | `LLM_GUARD_MAX_RETRIES` | Retry count for failed calls | `2` |
+| `LLM_GUARD_API_VERSION` | API version (Azure OpenAI) | Provider default |
 
 **Loading from `.env` file:**
 

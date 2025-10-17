@@ -22,10 +22,7 @@ fn scan_with_llm_noop_provider() {
 
 #[test]
 fn scan_with_config_file() {
-    let file = tempfile::Builder::new()
-        .suffix(".toml")
-        .tempfile()
-        .unwrap();
+    let file = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
     write(
         file.path(),
         "llm = { provider = \"noop\", model = \"config-model\" }",

@@ -148,6 +148,10 @@ fn apply_config_overrides(config_path: Option<&PathBuf>) -> Result<()> {
         "LLM_GUARD_MAX_RETRIES",
         settings.get_string("llm.max_retries").ok(),
     );
+    maybe_set_env(
+        "LLM_GUARD_API_VERSION",
+        settings.get_string("llm.api_version").ok(),
+    );
 
     Ok(())
 }
@@ -226,6 +230,7 @@ async fn scan_input(
                         model: model_override.map(|s| s.to_string()),
                         timeout_secs: Some(30),
                         max_retries: 2,
+                        api_version: None,
                     }
                 } else {
                     return Err(err);
@@ -240,6 +245,9 @@ async fn scan_input(
         }
         if let Some(endpoint) = endpoint_override {
             settings.endpoint = Some(endpoint.to_string());
+        }
+        if let Ok(api_version) = std::env::var("LLM_GUARD_API_VERSION") {
+            settings.api_version = Some(api_version);
         }
         let client = build_client(&settings)?;
         Some(client.into())

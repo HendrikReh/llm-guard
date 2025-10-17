@@ -131,7 +131,7 @@ To provide developers with a fast, transparent, and integrable security tool tha
   - Opt-in via `--with-llm` flag
   - Accept API key from environment variables (`LLM_GUARD_*`)
   - Allow provider override through CLI (`--provider`, `--model`, `--endpoint`) and env vars
-  - Support at least OpenAI, Anthropic Claude, Google Gemini, and noop providers
+  - Support at least OpenAI, Anthropic Claude, Azure OpenAI, Google Gemini, and noop providers
   - Return classification (safe/suspicious/malicious)
   - Provide rationale (≤40 words)
   - Suggest mitigation step

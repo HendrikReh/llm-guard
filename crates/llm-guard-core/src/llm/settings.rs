@@ -10,6 +10,7 @@ pub struct LlmSettings {
     pub model: Option<String>,
     pub timeout_secs: Option<u64>,
     pub max_retries: u32,
+    pub api_version: Option<String>,
 }
 
 impl LlmSettings {
@@ -19,6 +20,7 @@ impl LlmSettings {
     const MODEL_ENV: &'static str = "LLM_GUARD_MODEL";
     const TIMEOUT_ENV: &'static str = "LLM_GUARD_TIMEOUT_SECS";
     const RETRIES_ENV: &'static str = "LLM_GUARD_MAX_RETRIES";
+    const API_VERSION_ENV: &'static str = "LLM_GUARD_API_VERSION";
 
     /// Load settings from environment variables.
     ///
@@ -66,6 +68,10 @@ impl LlmSettings {
             .get(Self::RETRIES_ENV)
             .and_then(|v| v.trim().parse::<u32>().ok())
             .unwrap_or(2);
+        let api_version = vars
+            .get(Self::API_VERSION_ENV)
+            .cloned()
+            .filter(|v| !v.trim().is_empty());
 
         Ok(Self {
             provider,
@@ -74,6 +80,7 @@ impl LlmSettings {
             model,
             timeout_secs,
             max_retries,
+            api_version,
         })
     }
 }
@@ -101,6 +108,7 @@ mod tests {
             env::remove_var(LlmSettings::MODEL_ENV);
             env::remove_var(LlmSettings::TIMEOUT_ENV);
             env::remove_var(LlmSettings::RETRIES_ENV);
+            env::remove_var(LlmSettings::API_VERSION_ENV);
 
             let settings = LlmSettings::from_env().expect("should load settings");
             assert_eq!(settings.provider, "openai");
@@ -108,6 +116,7 @@ mod tests {
             assert!(settings.endpoint.is_none());
             assert!(settings.model.is_none());
             assert_eq!(settings.max_retries, 2);
+            assert!(settings.api_version.is_none());
         });
     }
 
@@ -128,6 +137,7 @@ mod tests {
             env::remove_var(LlmSettings::API_KEY_ENV);
             env::remove_var(LlmSettings::TIMEOUT_ENV);
             env::remove_var(LlmSettings::RETRIES_ENV);
+            env::remove_var(LlmSettings::API_VERSION_ENV);
             let settings = LlmSettings::from_env().expect("noop should not require key");
             assert_eq!(settings.provider, "noop");
             assert!(settings.api_key.is_empty());
@@ -141,11 +151,14 @@ mod tests {
             env::set_var(LlmSettings::API_KEY_ENV, "secret");
             env::set_var(LlmSettings::TIMEOUT_ENV, "45");
             env::set_var(LlmSettings::RETRIES_ENV, "5");
+            env::set_var(LlmSettings::API_VERSION_ENV, "2024-07-01");
             let settings = LlmSettings::from_env().expect("should parse timeout/retries");
             assert_eq!(settings.timeout_secs, Some(45));
             assert_eq!(settings.max_retries, 5);
+            assert_eq!(settings.api_version.as_deref(), Some("2024-07-01"));
             env::remove_var(LlmSettings::TIMEOUT_ENV);
             env::remove_var(LlmSettings::RETRIES_ENV);
+            env::remove_var(LlmSettings::API_VERSION_ENV);
         });
     }
 }

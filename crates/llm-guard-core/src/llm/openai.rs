@@ -187,6 +187,7 @@ mod tests {
             model: Some("gpt-test".into()),
             timeout_secs: Some(5),
             max_retries: 0,
+            api_version: None,
         }
     }
 

@@ -8,58 +8,73 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 #[derive(Debug, Clone)]
-pub struct AnthropicClient {
+pub struct AzureOpenAiClient {
     http: Client,
     url: String,
     api_key: String,
-    model: String,
     max_retries: u32,
 }
 
-impl AnthropicClient {
+impl AzureOpenAiClient {
     pub fn new(settings: &LlmSettings) -> Result<Self> {
         if settings.api_key.trim().is_empty() {
-            bail!("Anthropic API key must be provided via LLM_GUARD_API_KEY");
+            bail!("Azure OpenAI API key must be provided via LLM_GUARD_API_KEY");
         }
-        let base = settings
+        let endpoint = settings
             .endpoint
             .clone()
-            .unwrap_or_else(|| "https://api.anthropic.com".to_string());
-        let url = format!("{}/v1/messages", base.trim_end_matches('/'));
+            .ok_or_else(|| anyhow!("LLM_GUARD_ENDPOINT must be set for azure provider"))?;
+        let deployment = settings.model.clone().ok_or_else(|| {
+            anyhow!("LLM_GUARD_MODEL must contain the deployment name for azure provider")
+        })?;
+        let api_version = settings
+            .api_version
+            .clone()
+            .unwrap_or_else(|| "2024-02-15-preview".to_string());
+
+        let url = format!(
+            "{}/openai/deployments/{}/chat/completions?api-version={}",
+            endpoint.trim_end_matches('/'),
+            deployment,
+            api_version
+        );
+
         let http = Client::builder()
             .user_agent("llm-guard/0.1")
             .timeout(Duration::from_secs(settings.timeout_secs.unwrap_or(30)))
             .build()
-            .context("failed to build Anthropic HTTP client")?;
+            .context("failed to build Azure OpenAI HTTP client")?;
+
         Ok(Self {
             http,
             url,
             api_key: settings.api_key.clone(),
-            model: settings
-                .model
-                .clone()
-                .unwrap_or_else(|| "claude-3-haiku-20240307".to_string()),
             max_retries: settings.max_retries,
         })
     }
 }
 
 #[async_trait]
-impl LlmClient for AnthropicClient {
+impl LlmClient for AzureOpenAiClient {
     async fn enrich(&self, input: &str, report: &ScanReport) -> Result<LlmVerdict> {
-        let payload = AnthropicRequest {
-            model: self.model.clone(),
-            system: SYSTEM_PROMPT.to_string(),
-            messages: vec![AnthropicMessage {
-                role: "user".into(),
-                content: format!(
-                    "Input excerpt:\n{}\n\nScore: {:.1} ({:?})\nTop findings: {}\n",
-                    truncate(input, 2000),
-                    report.risk_score,
-                    report.risk_band,
-                    serde_json::to_string(&report.findings).unwrap_or_default()
-                ),
-            }],
+        let payload = ChatCompletionRequest {
+            messages: vec![
+                ChatMessage {
+                    role: "system".into(),
+                    content: SYSTEM_PROMPT.into(),
+                },
+                ChatMessage {
+                    role: "user".into(),
+                    content: format!(
+                        "Input excerpt:\n{}\n\nScore: {:.1} ({:?})\nTop findings: {}\n",
+                        truncate(input, 2000),
+                        report.risk_score,
+                        report.risk_band,
+                        serde_json::to_string(&report.findings).unwrap_or_default()
+                    ),
+                },
+            ],
+            temperature: 0.1,
             max_tokens: 200,
         };
 
@@ -69,8 +84,7 @@ impl LlmClient for AnthropicClient {
             let response = self
                 .http
                 .post(&self.url)
-                .header("x-api-key", &self.api_key)
-                .header("anthropic-version", "2023-06-01")
+                .header("api-key", &self.api_key)
                 .json(&payload)
                 .send()
                 .await;
@@ -79,7 +93,8 @@ impl LlmClient for AnthropicClient {
                 Ok(resp) => resp,
                 Err(err) => {
                     if attempt >= self.max_retries {
-                        return Err(err).context("failed to call Anthropic messages API");
+                        return Err(err)
+                            .context("failed to call Azure OpenAI chat completions API");
                     }
                     sleep(backoff).await;
                     backoff = (backoff * 2).min(Duration::from_secs(5));
@@ -92,7 +107,7 @@ impl LlmClient for AnthropicClient {
                 if attempt >= self.max_retries {
                     let status = response.status();
                     let body = response.text().await.unwrap_or_default();
-                    bail!("Anthropic API error ({}): {}", status, body);
+                    bail!("Azure OpenAI API error ({}): {}", status, body);
                 }
                 sleep(backoff).await;
                 backoff = (backoff * 2).min(Duration::from_secs(5));
@@ -100,18 +115,18 @@ impl LlmClient for AnthropicClient {
                 continue;
             }
 
-            let message: AnthropicResponse = response
+            let chat: ChatCompletionResponse = response
                 .json()
                 .await
-                .context("failed to parse Anthropic response")?;
-            let content = message
-                .content
+                .context("failed to parse Azure OpenAI response")?;
+            let content = chat
+                .choices
                 .into_iter()
-                .find_map(|part| part.text)
-                .ok_or_else(|| anyhow!("Anthropic response missing message content"))?;
+                .find_map(|choice| choice.message.content)
+                .ok_or_else(|| anyhow!("Azure OpenAI response missing message content"))?;
 
             let verdict: ModelVerdict = serde_json::from_str(&content)
-                .context("expected JSON verdict from Anthropic response")?;
+                .context("expected JSON verdict from Azure OpenAI response")?;
 
             return Ok(LlmVerdict {
                 label: verdict.label,
@@ -132,30 +147,31 @@ fn truncate(input: &str, max_chars: usize) -> String {
 }
 
 #[derive(Serialize)]
-struct AnthropicRequest {
-    model: String,
-    system: String,
-    messages: Vec<AnthropicMessage>,
+struct ChatCompletionRequest {
+    messages: Vec<ChatMessage>,
+    temperature: f32,
     max_tokens: u32,
 }
 
 #[derive(Serialize)]
-struct AnthropicMessage {
+struct ChatMessage {
     role: String,
     content: String,
 }
 
 #[derive(Deserialize)]
-struct AnthropicResponse {
-    content: Vec<AnthropicContent>,
+struct ChatCompletionResponse {
+    choices: Vec<ChatChoice>,
 }
 
 #[derive(Deserialize)]
-struct AnthropicContent {
-    #[serde(rename = "type")]
-    _type: String,
-    #[serde(default)]
-    text: Option<String>,
+struct ChatChoice {
+    message: ChatResponseMessage,
+}
+
+#[derive(Deserialize)]
+struct ChatResponseMessage {
+    content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -168,19 +184,18 @@ struct ModelVerdict {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm::settings::LlmSettings;
     use crate::scanner::{RiskThresholds, ScanReport, ScoreBreakdown};
     use httpmock::prelude::*;
 
     fn base_settings(url: String) -> LlmSettings {
         LlmSettings {
-            provider: "anthropic".into(),
+            provider: "azure".into(),
             api_key: "test-key".into(),
             endpoint: Some(url),
-            model: Some("claude-test".into()),
+            model: Some("deployment-name".into()),
             timeout_secs: Some(5),
             max_retries: 0,
-            api_version: None,
+            api_version: Some("2024-02-15-preview".into()),
         }
     }
 
@@ -200,18 +215,17 @@ mod tests {
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
             when.method(POST)
-                .path("/v1/messages")
-                .header("x-api-key", "test-key");
+                .path("/openai/deployments/deployment-name/chat/completions")
+                .query_param("api-version", "2024-02-15-preview")
+                .header("api-key", "test-key");
             then.status(200)
                 .header("content-type", "application/json")
-                .body(r#"{"content":[{"type":"text","text":"{\"label\":\"safe\",\"rationale\":\"ok\",\"mitigation\":\"none\"}"}]}"#);
+                .body(r#"{"choices":[{"message":{"content":"{\"label\":\"safe\",\"rationale\":\"ok\",\"mitigation\":\"none\"}"}}]}"#);
         });
 
-        let client = AnthropicClient::new(&base_settings(server.base_url())).unwrap();
+        let client = AzureOpenAiClient::new(&base_settings(server.base_url())).unwrap();
         let verdict = client.enrich("hello", &empty_report()).await.unwrap();
         assert_eq!(verdict.label, "safe");
-        assert_eq!(verdict.rationale, "ok");
-        assert_eq!(verdict.mitigation, "none");
         mock.assert();
     }
 
@@ -220,15 +234,17 @@ mod tests {
     async fn retries_on_failure() {
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
-            when.method(POST).path("/v1/messages");
+            when.method(POST)
+                .path("/openai/deployments/deployment-name/chat/completions")
+                .query_param("api-version", "2024-02-15-preview");
             then.status(500);
         });
 
         let mut settings = base_settings(server.base_url());
         settings.max_retries = 1;
-        let client = AnthropicClient::new(&settings).unwrap();
+        let client = AzureOpenAiClient::new(&settings).unwrap();
         let err = client.enrich("hello", &empty_report()).await.unwrap_err();
-        assert!(err.to_string().contains("Anthropic API error"));
+        assert!(err.to_string().contains("Azure OpenAI API error"));
         mock.assert_hits(2);
     }
 
