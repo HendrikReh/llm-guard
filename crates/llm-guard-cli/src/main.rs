@@ -74,6 +74,15 @@ enum Commands {
         /// Override endpoint/base URL for the selected provider.
         #[arg(long)]
         endpoint: Option<String>,
+        /// Override deployment identifier (Azure) when using rig-backed providers.
+        #[arg(long)]
+        deployment: Option<String>,
+        /// Override project identifier for providers that require it.
+        #[arg(long)]
+        project: Option<String>,
+        /// Override workspace identifier for providers that require it.
+        #[arg(long)]
+        workspace: Option<String>,
     },
 }
 
@@ -104,6 +113,9 @@ async fn run() -> Result<i32> {
             provider,
             model,
             endpoint,
+            deployment,
+            project,
+            workspace,
         } => {
             apply_config_overrides(cli.config_file.as_ref())?;
             scan_input(
@@ -115,6 +127,9 @@ async fn run() -> Result<i32> {
                 provider.as_deref(),
                 model.as_deref(),
                 endpoint.as_deref(),
+                deployment.as_deref(),
+                project.as_deref(),
+                workspace.as_deref(),
             )
             .await
         }
@@ -151,6 +166,15 @@ fn apply_config_overrides(config_path: Option<&PathBuf>) -> Result<()> {
     maybe_set_env(
         "LLM_GUARD_API_VERSION",
         settings.get_string("llm.api_version").ok(),
+    );
+    maybe_set_env(
+        "LLM_GUARD_DEPLOYMENT",
+        settings.get_string("llm.deployment").ok(),
+    );
+    maybe_set_env("LLM_GUARD_PROJECT", settings.get_string("llm.project").ok());
+    maybe_set_env(
+        "LLM_GUARD_WORKSPACE",
+        settings.get_string("llm.workspace").ok(),
     );
 
     Ok(())
@@ -211,6 +235,9 @@ async fn scan_input(
     provider_override: Option<&str>,
     model_override: Option<&str>,
     endpoint_override: Option<&str>,
+    deployment_override: Option<&str>,
+    project_override: Option<&str>,
+    workspace_override: Option<&str>,
 ) -> Result<i32> {
     let repo = Arc::new(FileRuleRepository::new(rules_dir));
     let scanner = Arc::new(DefaultScanner::new(Arc::clone(&repo)));
@@ -246,17 +273,26 @@ async fn scan_input(
         if let Some(model) = model_override {
             settings.model = Some(model.to_string());
         }
+        if let Some(endpoint) = endpoint_override {
+            settings.endpoint = Some(endpoint.to_string());
+        }
+        if let Some(deployment) = deployment_override {
+            settings.deployment = Some(deployment.to_string());
+        }
         if settings.deployment.is_none() {
             settings.deployment = std::env::var("LLM_GUARD_DEPLOYMENT").ok();
+        }
+        if let Some(project) = project_override {
+            settings.project = Some(project.to_string());
         }
         if settings.project.is_none() {
             settings.project = std::env::var("LLM_GUARD_PROJECT").ok();
         }
+        if let Some(workspace) = workspace_override {
+            settings.workspace = Some(workspace.to_string());
+        }
         if settings.workspace.is_none() {
             settings.workspace = std::env::var("LLM_GUARD_WORKSPACE").ok();
-        }
-        if let Some(endpoint) = endpoint_override {
-            settings.endpoint = Some(endpoint.to_string());
         }
         if let Ok(api_version) = std::env::var("LLM_GUARD_API_VERSION") {
             settings.api_version = Some(api_version);

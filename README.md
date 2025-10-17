@@ -175,6 +175,8 @@ export LLM_GUARD_API_VERSION=2024-02-15-preview
 | `LLM_GUARD_MAX_RETRIES` | Retry count for failed calls | `2` |
 | `LLM_GUARD_API_VERSION` | API version (Azure OpenAI) | Provider default |
 
+**CLI overrides:** Use `--provider`, `--model`, `--endpoint`, `--deployment`, `--project`, and `--workspace` to override these values for a single run without touching environment variables.
+
 **Loading from `.env` file:**
 
 ```bash
@@ -193,6 +195,10 @@ model = "claude-3-haiku-20240307"
 endpoint = "https://api.anthropic.com"
 timeout_secs = 45
 max_retries = 3
+# Optional rig-specific fields
+# deployment = "gpt4o-observability"
+# project = "security-lab"
+# workspace = "default"
 ```
 
 ```bash
@@ -469,8 +475,3 @@ MIT License — see [`LICENSE`](./LICENSE) file for details.
 - **IDE:** Cursor
 - **Research:** Perplexity
 - **Git Client:** Tower
-
-**Community**
-- Thanks to the Rust community for excellent documentation and tooling
-- OWASP LLM Top 10 project for threat taxonomy
-- All contributors and testers who help improve this tool

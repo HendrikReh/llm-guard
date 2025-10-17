@@ -116,9 +116,9 @@ This living document tracks implementation progress for the LLM-Guard project, d
 **Goal:** Transition multi-provider orchestration to [`rig.rs`](https://rig.rs/)
 **AI Collaboration:** Adapter refactor, validation, regression testing
 
-- [~] Replace existing LLM adapter wiring with rig.rs (OpenAI now routes through the rig adapter)
-- [ ] Map current provider implementations (Anthropic, Gemini, Azure, noop) into rig.rs abstractions
-- [ ] Ensure configuration precedence (config → env → flags) is preserved via rig.rs
+- [~] Replace existing LLM adapter wiring with rig.rs (OpenAI, Anthropic, Gemini, Azure now route through the rig adapter; noop remains standalone)
+- [~] Map current provider implementations (Anthropic, Gemini, Azure, noop) into rig.rs abstractions (noop client still separate)
+- [~] Ensure configuration precedence (config → env → flags) is preserved via rig.rs (CLI now exposes deployment/project/workspace overrides)
 - [ ] Update CLI tests and documentation to reflect the new runtime
 
 ---
