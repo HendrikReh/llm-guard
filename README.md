@@ -15,8 +15,8 @@
 [![Cursor](https://img.shields.io/badge/Cursor-000000?logo=visual-studio-code&logoColor=white)](https://cursor.sh)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://claude.ai)
 [![Codex CLI](https://img.shields.io/badge/Codex_CLI-412991?logo=openai&logoColor=white)](https://github.com/openai/codex-cli)
-[![RepoPrompt MCP](https://img.shields.io/badge/RepoPrompt-MCP-orange)](https://github.com/modelcontextprotocol/servers)
-[![Context7 MCP](https://img.shields.io/badge/Context7-MCP-orange)](https://github.com/modelcontextprotocol/servers)
+[![RepoPrompt MCP](https://img.shields.io/badge/RepoPrompt-MCP-orange)](https://repoprompt.com/)
+[![Context7 MCP](https://img.shields.io/badge/Context7-MCP-orange)](https://context7.com/)
 
 > **AI Coding Hackathon Project** | Experimenting with AI-assisted development workflows
 
