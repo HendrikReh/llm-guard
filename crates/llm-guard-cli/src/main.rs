@@ -1,8 +1,13 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use llm_guard_core::{FileRuleRepository, RuleKind, RuleRepository};
+use llm_guard_core::{
+    render_report, DefaultScanner, FileRuleRepository, OutputFormat, RuleKind, RuleRepository,
+    Scanner,
+};
+use tokio::io::{self, AsyncReadExt};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -34,6 +39,15 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Scan input (stdin or file) and produce a risk report
+    Scan {
+        /// Optional path to a file to scan; omit to read from stdin
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// Emit JSON instead of human-readable output
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -42,8 +56,44 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command.unwrap_or(Commands::ListRules { json: false }) {
         Commands::ListRules { json } => list_rules(&cli.rules_dir, json).await?,
+        Commands::Scan { file, json } => scan_input(&cli.rules_dir, file.as_deref(), json).await?,
     }
     Ok(())
+}
+
+async fn scan_input(rules_dir: &Path, file: Option<&Path>, json: bool) -> Result<()> {
+    let repo = Arc::new(FileRuleRepository::new(rules_dir));
+    let scanner = DefaultScanner::new(Arc::clone(&repo));
+    let text = read_input(file)
+        .await
+        .with_context(|| "failed to read input for scanning")?;
+    let report = scanner.scan(&text).await?;
+    let rendered = render_report(
+        &report,
+        if json {
+            OutputFormat::Json
+        } else {
+            OutputFormat::Human
+        },
+    )?;
+    println!("{}", rendered);
+    Ok(())
+}
+
+async fn read_input(path: Option<&Path>) -> Result<String> {
+    if let Some(path) = path {
+        Ok(tokio::fs::read_to_string(path)
+            .await
+            .with_context(|| format!("failed to read input file {}", path.display()))?)
+    } else {
+        let mut buf = String::new();
+        let mut stdin = io::stdin();
+        stdin
+            .read_to_string(&mut buf)
+            .await
+            .context("failed to read from stdin")?;
+        Ok(buf)
+    }
 }
 
 async fn list_rules(rules_dir: &Path, json: bool) -> Result<()> {

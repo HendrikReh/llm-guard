@@ -42,7 +42,7 @@ Status key: `[ ]` not started • `[~]` in progress • `[x]` done
 
 ## Phase 5 — Reporting & CLI
 
-- [ ] Build `report` module with human-readable (ANSI-aware) and JSON reporters; include error paths and quiet mode.
+- [x] Build `report` module with human-readable (ANSI-aware) and JSON reporters; include error paths and quiet mode.
 - [ ] Design `cli.rs` using `clap` with subcommands/flags (`--input`, `--tail`, `--with-llm`, `--json`).
 - [ ] Implement input readers (stdin, file, optional live tail stub) with streaming support and size limits.
 - [ ] Wire CLI to scanner pipeline, ensuring graceful exit codes (0 safe, 2 medium, 3 high, 1 error) for CI.
