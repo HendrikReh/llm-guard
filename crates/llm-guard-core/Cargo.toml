@@ -21,3 +21,4 @@ reqwest.workspace = true
 tempfile = "3"
 futures = "0.3"
 tokio.workspace = true
+httpmock = "0.7"

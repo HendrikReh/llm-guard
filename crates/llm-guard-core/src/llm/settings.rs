@@ -8,6 +8,8 @@ pub struct LlmSettings {
     pub api_key: String,
     pub endpoint: Option<String>,
     pub model: Option<String>,
+    pub timeout_secs: Option<u64>,
+    pub max_retries: u32,
 }
 
 impl LlmSettings {
@@ -15,6 +17,8 @@ impl LlmSettings {
     const API_KEY_ENV: &'static str = "LLM_GUARD_API_KEY";
     const ENDPOINT_ENV: &'static str = "LLM_GUARD_ENDPOINT";
     const MODEL_ENV: &'static str = "LLM_GUARD_MODEL";
+    const TIMEOUT_ENV: &'static str = "LLM_GUARD_TIMEOUT_SECS";
+    const RETRIES_ENV: &'static str = "LLM_GUARD_MAX_RETRIES";
 
     /// Load settings from environment variables.
     ///
@@ -55,12 +59,21 @@ impl LlmSettings {
             .get(Self::MODEL_ENV)
             .cloned()
             .filter(|v| !v.trim().is_empty());
+        let timeout_secs = vars
+            .get(Self::TIMEOUT_ENV)
+            .and_then(|v| v.trim().parse::<u64>().ok());
+        let max_retries = vars
+            .get(Self::RETRIES_ENV)
+            .and_then(|v| v.trim().parse::<u32>().ok())
+            .unwrap_or(2);
 
         Ok(Self {
             provider,
             api_key,
             endpoint,
             model,
+            timeout_secs,
+            max_retries,
         })
     }
 }
@@ -86,12 +99,15 @@ mod tests {
             env::set_var(LlmSettings::API_KEY_ENV, "secret");
             env::remove_var(LlmSettings::ENDPOINT_ENV);
             env::remove_var(LlmSettings::MODEL_ENV);
+            env::remove_var(LlmSettings::TIMEOUT_ENV);
+            env::remove_var(LlmSettings::RETRIES_ENV);
 
             let settings = LlmSettings::from_env().expect("should load settings");
             assert_eq!(settings.provider, "openai");
             assert_eq!(settings.api_key, "secret");
             assert!(settings.endpoint.is_none());
             assert!(settings.model.is_none());
+            assert_eq!(settings.max_retries, 2);
         });
     }
 
@@ -110,9 +126,26 @@ mod tests {
         with_env_lock(|| {
             env::set_var(LlmSettings::PROVIDER_ENV, "noop");
             env::remove_var(LlmSettings::API_KEY_ENV);
+            env::remove_var(LlmSettings::TIMEOUT_ENV);
+            env::remove_var(LlmSettings::RETRIES_ENV);
             let settings = LlmSettings::from_env().expect("noop should not require key");
             assert_eq!(settings.provider, "noop");
             assert!(settings.api_key.is_empty());
+        });
+    }
+
+    #[test]
+    fn parses_timeout_and_retries() {
+        with_env_lock(|| {
+            env::set_var(LlmSettings::PROVIDER_ENV, "openai");
+            env::set_var(LlmSettings::API_KEY_ENV, "secret");
+            env::set_var(LlmSettings::TIMEOUT_ENV, "45");
+            env::set_var(LlmSettings::RETRIES_ENV, "5");
+            let settings = LlmSettings::from_env().expect("should parse timeout/retries");
+            assert_eq!(settings.timeout_secs, Some(45));
+            assert_eq!(settings.max_retries, 5);
+            env::remove_var(LlmSettings::TIMEOUT_ENV);
+            env::remove_var(LlmSettings::RETRIES_ENV);
         });
     }
 }

@@ -20,15 +20,15 @@ This project was developed during the **[AI Coding Accelerator](https://maven.co
 ### What Makes This Project Special
 
 - **AI Pair Programming:** Core features developed in collaboration with AI coding assistants (Claude Code)
-- **Living Documentation:** `AGENTS.md` serves as onboarding guide for AI assistants joining the project
-- **Transparent Development:** `PLAN.md` tracks implementation progress and decisions in real-time
-- **Iterative Refinement:** Product requirements (`PRD.md`) evolved through AI-human dialogue
+- **Living Documentation:** [`AGENTS.md`](./AGENTS.md) serves as onboarding guide for AI assistants joining the project
+- **Transparent Development:** [`PLAN.md`](./PLAN.md) tracks implementation progress and decisions in real-time
+- **Iterative Refinement:** Product requirements ([`PRD.md`](./PRD.md)) evolved through AI-human dialogue
 
 > **Note:** This codebase demonstrates both the potential and practical considerations of AI-assisted development, including code quality, testing approaches, and documentation practices.
 
 ## Project Status
 
-**Current Phase:** Active Development (See `PLAN.md` for detailed roadmap)
+**Current Phase:** Active Development (See [`PLAN.md`](./PLAN.md) for detailed roadmap)
 
 **Functional Features:**
 - ✅ CLI scaffolding with Clap
@@ -105,6 +105,11 @@ export LLM_GUARD_API_KEY=your_key_here
 export LLM_GUARD_ENDPOINT=https://api.openai.com
 export LLM_GUARD_MODEL=gpt-4o-mini
 ./target/release/llm-guard scan --file samples/chat.txt --with-llm
+
+# Tail a log while enriching with LLM verdicts
+./target/release/llm-guard scan --file logs/chat.log --tail --with-llm
+
+> `--with-llm` currently supports the OpenAI chat completions API (default provider). Set `LLM_GUARD_PROVIDER=noop` to disable external calls while retaining heuristic output.
 ```
 
 > Set `LLM_GUARD_PROVIDER=noop` to run locally without calling an external service (returns heuristic-only verdicts).
@@ -115,6 +120,10 @@ export LLM_GUARD_MODEL=gpt-4o-mini
 - `LLM_GUARD_API_KEY` — required API key/token for real providers.
 - `LLM_GUARD_ENDPOINT` — optional custom endpoint/base URL (defaults to the provider's public API).
 - `LLM_GUARD_MODEL` — optional model name (e.g., `gpt-4o-mini`).
+- `LLM_GUARD_TIMEOUT_SECS` — optional HTTP timeout (seconds, default `30`).
+- `LLM_GUARD_MAX_RETRIES` — optional retry count for failed calls (default `2`).
+
+> Tip: If you keep credentials in a `.env` file, run `set -a && source .env` before invoking the CLI so these variables are exported.
 
 ## Technical Overview
 
@@ -159,9 +168,9 @@ cli (clap)
 This project includes comprehensive documentation designed for both human developers and AI coding assistants:
 
 - **`README.md`** (this file) — Project overview and quick start
-- **`PRD.md`** — Complete Product Requirements Document with technical specifications
-- **`PLAN.md`** — Implementation roadmap with phase-by-phase progress tracking
-- **`AGENTS.md`** — Onboarding guide for AI coding assistants (Rust conventions, patterns, collaboration guidelines)
+- **[`PRD.md`](./PRD.md)** — Complete Product Requirements Document with technical specifications
+- **[`PLAN.md`](./PLAN.md)** — Implementation roadmap with phase-by-phase progress tracking
+- **[`AGENTS.md`](./AGENTS.md)** — Onboarding guide for AI coding assistants (Rust conventions, patterns, collaboration guidelines)
 
 ## AI-Assisted Development Insights
 
@@ -181,8 +190,8 @@ This project includes comprehensive documentation designed for both human develo
 
 ### Recommendations for AI-Assisted Projects
 
-1. **Start with clear requirements:** Detailed PRDs (like `PRD.md`) enable better AI contributions
-2. **Use structured documentation:** Files like `AGENTS.md` help AI assistants onboard quickly
+1. **Start with clear requirements:** Detailed PRDs (like [`PRD.md`](./PRD.md)) enable better AI contributions
+2. **Use structured documentation:** Files like [`AGENTS.md`](./AGENTS.md) help AI assistants onboard quickly
 3. **Iterate incrementally:** Small, testable changes work better than large refactors
 4. **Review critically:** Treat AI output as thoughtful first drafts, not final code
 5. **Maintain human agency:** Keep humans in the loop for architecture and security decisions
@@ -191,7 +200,7 @@ This project includes comprehensive documentation designed for both human develo
 
 This is a hackathon project exploring AI-assisted development workflows. Contributions that further this experiment are welcome:
 
-- **Code contributions:** Follow conventions in `AGENTS.md`
+- **Code contributions:** Follow conventions in [`AGENTS.md`](./AGENTS.md)
 - **Documentation:** Help document AI collaboration patterns
 - **Detection rules:** Contribute new prompt injection patterns
 - **Testing:** Add test cases for edge scenarios

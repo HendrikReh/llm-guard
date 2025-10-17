@@ -6,8 +6,8 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use llm_guard_core::{
-    build_client, render_report, DefaultScanner, FileRuleRepository, LlmSettings, OutputFormat,
-    RiskBand, RuleKind, RuleRepository, Scanner,
+    build_client, render_report, DefaultScanner, FileRuleRepository, LlmClient, LlmSettings,
+    OutputFormat, RiskBand, RuleKind, RuleRepository, Scanner,
 };
 use tokio::{
     fs,
@@ -141,20 +141,23 @@ async fn scan_input(
     let repo = Arc::new(FileRuleRepository::new(rules_dir));
     let scanner = Arc::new(DefaultScanner::new(Arc::clone(&repo)));
 
+    let llm_client: Option<Arc<dyn LlmClient>> = if with_llm {
+        let settings = LlmSettings::from_env()?;
+        let client = build_client(&settings)?;
+        Some(client.into())
+    } else {
+        None
+    };
+
     if tail {
         let file = file.ok_or_else(|| anyhow!("--tail requires --file to specify a path"))?;
-        if with_llm {
-            bail!("--with-llm is not supported with --tail yet");
-        }
-        tail_file(scanner, file, json).await
+        tail_file(scanner, file, json, llm_client).await
     } else {
         let text = read_input(file)
             .await
             .with_context(|| "failed to read input for scanning")?;
         let mut report = scanner.scan(&text).await?;
-        if with_llm {
-            let settings = LlmSettings::from_env()?;
-            let client = build_client(&settings)?;
+        if let Some(client) = llm_client.as_ref() {
             let verdict = client.enrich(&text, &report).await?;
             report.llm_verdict = Some(verdict);
         }
@@ -191,6 +194,7 @@ async fn tail_file(
     scanner: Arc<DefaultScanner<FileRuleRepository>>,
     path: &Path,
     json: bool,
+    llm_client: Option<Arc<dyn LlmClient>>,
 ) -> Result<i32> {
     let mut last_snapshot = String::new();
     let mut last_code = 0;
@@ -200,7 +204,11 @@ async fn tail_file(
             .with_context(|| format!("failed to read tailed file {}", path.display()))?;
         if contents != last_snapshot {
             last_snapshot = contents.clone();
-            let report = scanner.scan(&contents).await?;
+            let mut report = scanner.scan(&contents).await?;
+            if let Some(client) = llm_client.as_ref() {
+                let verdict = client.enrich(&contents, &report).await?;
+                report.llm_verdict = Some(verdict);
+            }
             let rendered = render_report(
                 &report,
                 if json {
