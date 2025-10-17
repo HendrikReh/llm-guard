@@ -470,6 +470,8 @@ llm-guard scan --file /var/log/chatbot.log --tail --with-llm --json | \
 
 > Screenshots used in demos: `docs/screenshots/rig-openai.png` and `docs/screenshots/rig-anthropic.png` (**not version-controlled**; skip if unavailable).
 
+![Rig Anthropic verdict](./screenshots/rig-anthropic.png)
+
 ---
 
 ## Rig Provider Troubleshooting

@@ -13,10 +13,11 @@ This document describes the testing strategy, test execution, and quality assura
   - [Ignored Tests](#ignored-tests)
   - [Alias Commands](#alias-commands-if-configured-in-cargoconfigtoml)
 - [Test Categories](#test-categories)
-  - [Unit Tests (28 tests)](#unit-tests-28-tests-)
-  - [Integration Tests (2 tests)](#integration-tests-2-tests-)
-  - [Network Tests (8 tests - Ignored)](#network-tests-8-tests---ignored-)
-  - [TLS Tests (2 tests - Ignored on macOS)](#tls-tests-2-tests---ignored-on-macos-)
+  - [Unit Tests (53 tests)](#unit-tests-53-tests-)
+  - [Integration Tests (3 tests)](#integration-tests-3-tests-)
+  - [Snapshot Tests (3 tests)](#snapshot-tests-3-tests-)
+  - [Network Tests (8 tests — Ignored)](#network-tests-8-tests--ignored-)
+  - [TLS Builder Tests (2 tests — Ignored)](#tls-builder-tests-2-tests--ignored-)
 - [Running Tests in CI/CD](#running-tests-in-cicd)
   - [GitHub Actions Example](#github-actions-example)
   - [Pre-commit Hook](#pre-commit-hook)
@@ -57,13 +58,14 @@ LLM-Guard has comprehensive test coverage across multiple levels following the t
 
 | Test Type | Count | Status | Purpose | Execution Time |
 |-----------|-------|--------|---------|----------------|
-| Unit Tests | 28 | ✅ Pass | Core logic validation | <100ms |
-| Integration Tests | 2 | ✅ Pass | End-to-end CLI scenarios | ~400ms |
-| Network Tests | 8 | 🔶 Ignored | Provider HTTP client testing | ~2s |
-| TLS Tests | 2 | 🔶 Ignored (macOS) | Rig adapter builder tests | N/A |
+| Unit Tests | 53 | ✅ Pass | Core CLI + engine validation | <400ms |
+| Integration Tests | 3 | ✅ Pass | End-to-end CLI scenarios | ~500ms |
+| Snapshot Tests | 3 | ✅ Pass | Regression coverage for representative prompts | ~200ms |
+| Network Tests | 8 | 🔶 Ignored | Provider HTTP client testing (loopback HTTP) | ~2s |
+| TLS Builder Tests | 2 | 🔶 Ignored | Rig adapter TLS handshake coverage | ~150ms |
 
-**Total:** 40 tests (30 active, 10 ignored)
-**Test Execution:** `cargo test` runs in <500ms
+**Total:** 69 tests (59 active, 10 ignored)  
+**Test Execution:** `cargo test --workspace --all-features` completes in <1s (excluding ignored tests)  
 **Coverage:** ~85% (estimated)
 
 ## Quick Reference
@@ -149,9 +151,9 @@ cargo cov               # Generate coverage report
 
 ## Test Categories
 
-### Unit Tests (28 tests) ✅
+### Unit Tests (53 tests) ✅
 
-**Location:** `crates/llm-guard-core/src/**/*.rs` (inline with implementation)
+**Location:** `crates/llm-guard-core/src/**/*.rs`, `crates/llm-guard-cli/src/main.rs` (inline with implementation)
 
 **What They Test:**
 - **Scanner Engine:**
@@ -177,6 +179,10 @@ cargo cov               # Generate coverage report
   - String truncation logic (≤800 chars)
   - Configuration parsing and validation
   - Provider selection and defaults
+- **CLI Utilities:**
+  - Provider profile priming (`llm_providers.yaml`)
+  - Tail file watcher behavior
+  - Environment override precedence
 
 **Example Test:**
 ```rust
@@ -190,9 +196,9 @@ fn scan_report_clamps_scores() {
 }
 ```
 
-**Run:** `cargo test --lib`
+**Run:** `cargo test -p llm-guard-core --lib && cargo test -p llm-guard-cli --lib`
 
-### Integration Tests (2 tests) ✅
+### Integration Tests (3 tests) ✅
 
 **Location:** `crates/llm-guard-cli/tests/`
 
@@ -209,27 +215,35 @@ fn scan_report_clamps_scores() {
   - Verify `--with-llm` flag triggers LLM analysis path
   - Test verdict merging into ScanReport
   - No actual API calls (uses noop/mock adapter)
+  
+**Key Files:**
+- `tests/health.rs` — provider diagnostics (`health` subcommand)
+- `tests/scan_llm.rs` — configuration precedence + noop LLM verdicts
 
-**Example Test Scenarios:**
+**Run:**
 ```bash
-# Build CLI binary first
-cargo build
+# Run all CLI integrations
+cargo test -p llm-guard-cli --test '*' -- --nocapture
 
-# Run integration test with noop provider
-./target/debug/llm-guard-cli scan --file samples/test.txt --with-llm
-
-# Test with provider profiles configuration
-cargo run --bin llm-guard-cli -- \
-  --providers-config llm_providers.yaml \
-  scan --with-llm --provider anthropic \
-  --file examples/chat.txt
-
-# Expected: Clean exit, report generated, verdict included
+# Focus on a single scenario
+cargo test -p llm-guard-cli --test scan_llm -- --nocapture
 ```
 
-**Run:** `cargo test --test '*'`
+### Snapshot Tests (3 tests) ✅
 
-### Network Tests (8 tests - Ignored) 🔶
+**Location:** `tests/scanner_snapshots.rs`
+
+**Purpose:**
+- Regression coverage for representative safe, suspicious, and malicious prompts
+- Ensures explainable output (findings, excerpts, weights) remains stable
+- Validates synergy bonuses and band labeling across versions
+
+**Managing Snapshots:**
+- Stored under `tests/snapshots/` (managed by `insta`)
+- Update snapshots only after reviewing diff output
+- Regenerate with `cargo insta review` or `INSTA_UPDATE=auto cargo test --test scanner_snapshots`
+
+### Network Tests (8 tests — Ignored) 🔶
 
 **Why Ignored:** Require loopback networking for mock HTTP servers (not available in sandboxed environments)
 
@@ -261,7 +275,7 @@ cargo test gemini::tests -- --ignored
 ```
 
 **Test Infrastructure:**
-- Uses `wiremock` for HTTP mocking
+- Uses `httpmock` for HTTP mocking
 - Mock servers bind to `127.0.0.1:0` (random port)
 - Tests are async (`#[tokio::test]`)
 - Marked with `#[ignore = "requires loopback networking"]`
@@ -272,45 +286,27 @@ cargo test gemini::tests -- --ignored
 - When debugging API integration issues
 - **Not required** for normal development (unit tests cover logic)
 
-### TLS Tests (2 tests - Ignored on macOS) 🔶
+### TLS Builder Tests (2 tests — Ignored) 🔶
 
-**Why Ignored:** `reqwest` default TLS stack (native-tls) unavailable in macOS sandbox due to Security framework restrictions
+**Why Ignored:** The rig adapter builder tests rely on `reqwest`'s TLS stack. In sandboxed macOS environments the default backend cannot access the Security framework, so the tests are skipped to keep the suite green.
 
 **Location:** `crates/llm-guard-core/src/llm/rig_adapter.rs`
 
 **What They Test:**
-- **Rig Adapter Builder ([ADR-0003](./ADR/0003-optional-llm-integration.md)):**
-  - OpenAI client initialization via `rig-core`
-  - Default model selection behavior
-  - Explicit model override configuration
-  - TLS certificate validation during HTTPS setup
+- Rig adapter OpenAI builder default model selection
+- Explicit model configuration via rig.rs `ClientBuilder`
 
 **Running TLS Tests:**
 ```bash
-# On Linux (should work)
-cargo test rig_adapter::tests -- --ignored
-
-# On macOS (fails in sandbox due to native-tls Security framework)
-# ❌ Error: "TLS backend cannot be initialized"
-```
-
-**macOS Sandbox Limitation:**
-The default `reqwest` TLS backend (`native-tls`) requires access to macOS Security framework, which is restricted in sandboxed environments (including some terminal sessions and CI runners).
-
-**Workaround for macOS:**
-Switch to pure-Rust TLS implementation (`rustls`):
-
-```toml
-# In llm-guard-core/Cargo.toml
-[dependencies]
-reqwest = { version = "0.11", features = ["rustls-tls"], default-features = false }
-rig-core = { version = "0.22", default-features = false, features = ["rustls-tls"] }
+# Execute on Linux or an unsandboxed macOS shell
+cargo test llm::rig_adapter::tests::openai_builder_defaults_model_when_missing -- --ignored
+cargo test llm::rig_adapter::tests::openai_builder_sets_model_id -- --ignored
 ```
 
 **When to Run:**
-- On Linux CI/CD pipelines (works reliably)
-- Before releasing changes to rig adapter integration
-- **Not required** on macOS development machines (already marked ignored)
+- Before changing rig adapter TLS defaults or dependencies
+- After toggling reqwest feature flags (`rustls-tls` vs `native-tls`)
+- When verifying fixes for the TLS backend error described in Troubleshooting
 
 ## Running Tests in CI/CD
 
@@ -579,7 +575,7 @@ cargo llvm-cov --workspace --json --output-path coverage.json
 
 **Include Ignored Tests (optional):**
 ```bash
-# Generate coverage including network/TLS tests
+# Generate coverage including network tests
 # (Only works if loopback networking available)
 cargo llvm-cov --workspace --html -- --include-ignored
 ```
@@ -850,24 +846,20 @@ Common test issues and their solutions.
 
 ### "TLS backend cannot be initialized" on macOS
 
-**Problem:** Rig adapter tests fail with TLS initialization error
-
-**Error Message:**
+**Problem:** Rig adapter builder tests fail with:
 ```
-thread 'rig_adapter::tests::test_openai_builder' panicked at 'TLS backend cannot be initialized'
+thread 'llm::rig_adapter::tests::openai_builder_defaults_model_when_missing' panicked at 'TLS backend cannot be initialized'
 ```
 
-**Root Cause:** macOS sandbox restricts access to Security framework used by `native-tls`
+**Root Cause:** Sandbox-restricted macOS environments block `native-tls` (and, in some shells, even `rustls`) from accessing the system trust store. The suite marks the TLS builder tests as `#[ignore]` to avoid spurious failures.
 
 **Solutions:**
-1. **Ignore tests** (already done) - Tests marked `#[ignore]` on macOS
-2. **Switch to rustls** - See TLS Tests section for Cargo.toml changes
-3. **Run outside sandbox** - Run tests in non-sandboxed terminal
+1. **Keep them ignored** — default behaviour; only run when validating TLS changes.
+2. **Run outside the sandbox** — open a non-sandboxed Terminal/iTerm session or use a Linux environment.
+3. **Force pure Rust TLS** — ensure `reqwest`/`rig-core` compile with `default-features = false, features = ["rustls-tls"]`. Clean the workspace afterwards (`cargo clean`).
 
-**Verify fix:**
-```bash
-cargo test rig_adapter::tests -- --ignored
-```
+**Verify fix:**  
+`cargo test llm::rig_adapter::tests::openai_builder_defaults_model_when_missing -- --ignored`
 
 ### "Address already in use" in network tests
 
@@ -955,7 +947,7 @@ cargo test -- --nocapture --test-threads=1 | grep "test result:"
    ```bash
    # Use conditional compilation
    #[cfg(target_os = "macos")]
-   #[ignore = "macOS-specific TLS issue"]
+   #[ignore = "macOS runner lacks file tailing support"]
    ```
 
 3. **Environment variables missing:**

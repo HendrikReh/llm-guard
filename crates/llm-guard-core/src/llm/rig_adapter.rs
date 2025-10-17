@@ -7,6 +7,7 @@ use rig::completion::message::AssistantContent;
 use rig::completion::{CompletionError, CompletionModelDyn};
 use rig::providers::azure::AzureOpenAIAuth;
 use rig::providers::{anthropic, azure, openai};
+use rig::OneOrMany;
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
@@ -232,48 +233,7 @@ impl LlmClient for RigLlmClient {
         };
 
         let choice = response.choice;
-
-        // Always log raw response when debug is enabled
-        debug_log_choice(self.config.provider_label, &choice);
-
-        let content = choice
-            .clone()
-            .into_iter()
-            .filter_map(|segment| match segment {
-                AssistantContent::Text(text) => Some(text.text),
-                AssistantContent::Reasoning(reasoning) => Some(reasoning.reasoning.join("\n")),
-                AssistantContent::ToolCall(tool) => {
-                    serde_json::to_string(&tool.function.arguments).ok()
-                }
-            })
-            .filter(|value| !value.trim().is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let trimmed = content.trim();
-
-        // Log extracted content when debug is enabled
-        if debug_enabled() && !trimmed.is_empty() {
-            tracing::warn!(
-                "rig {} extracted content: {}",
-                self.config.provider_label,
-                trimmed
-            );
-        }
-
-        if trimmed.is_empty() {
-            // Gemini/OpenAI callbacks sometimes omit textual content while returning metadata only.
-            // In that case we produce a fallback verdict instead of treating it as an error.
-            tracing::warn!(
-                "rig {} response did not include textual content; returning fallback verdict",
-                self.config.provider_label
-            );
-            return Ok(fallback_verdict(self.config.provider_label));
-        }
-
-        let json_payload = extract_json_payload(trimmed);
-        let verdict =
-            parse_verdict_json(&json_payload, self.config.provider_label, &self.model_id)?;
+        let verdict = verdict_from_choice(choice, self.config.provider_label, &self.model_id)?;
 
         Ok(LlmVerdict {
             label: verdict.label,
@@ -428,6 +388,45 @@ fn debug_log_choice(provider: &str, choice: &rig::OneOrMany<AssistantContent>) {
     }
 }
 
+fn verdict_from_choice(
+    choice: OneOrMany<AssistantContent>,
+    provider_label: &str,
+    model_id: &str,
+) -> Result<ModelVerdict> {
+    debug_log_choice(provider_label, &choice);
+
+    let content = choice
+        .clone()
+        .into_iter()
+        .filter_map(|segment| match segment {
+            AssistantContent::Text(text) => Some(text.text),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.reasoning.join("\n")),
+            AssistantContent::ToolCall(tool) => {
+                serde_json::to_string(&tool.function.arguments).ok()
+            }
+        })
+        .filter(|value| !value.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let trimmed = content.trim();
+
+    if debug_enabled() && !trimmed.is_empty() {
+        tracing::warn!("rig {} extracted content: {}", provider_label, trimmed);
+    }
+
+    if trimmed.is_empty() {
+        tracing::warn!(
+            "rig {} response did not include textual content; returning fallback verdict",
+            provider_label
+        );
+        return Ok(fallback_model_verdict(provider_label));
+    }
+
+    let json_payload = extract_json_payload(trimmed);
+    parse_verdict_json(&json_payload, provider_label, model_id)
+}
+
 fn truncate(input: &str, max_chars: usize) -> String {
     if input.chars().count() <= max_chars {
         return input.to_string();
@@ -463,6 +462,10 @@ fn strip_code_fence(input: &str) -> Option<String> {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use rig::{
+        completion::message::{AssistantContent, Text},
+        OneOrMany,
+    };
 
     fn openai_settings() -> LlmSettings {
         LlmSettings {
@@ -630,5 +633,24 @@ mod tests {
         let truncated = truncate(long, 10);
         assert!(truncated.ends_with('…'));
         assert_eq!(truncated.chars().count(), 11);
+    }
+
+    #[test]
+    fn verdict_from_choice_parses_valid_json() {
+        let choice = OneOrMany::one(AssistantContent::Text(Text {
+            text: "{\"label\":\"malicious\",\"rationale\":\"Requires escalation\",\"mitigation\":\"Block request\"}".into(),
+        }));
+        let verdict =
+            verdict_from_choice(choice, "openai", "gpt-test").expect("should parse JSON payload");
+        assert_eq!(verdict.label, "malicious");
+        assert_eq!(verdict.mitigation, "Block request");
+    }
+
+    #[test]
+    fn verdict_from_choice_empty_returns_fallback() {
+        let choice = OneOrMany::one(AssistantContent::Text(Text { text: "".into() }));
+        let verdict = verdict_from_choice(choice, "anthropic", "claude").expect("fallback verdict");
+        assert_eq!(verdict.label, "unknown");
+        assert!(verdict.rationale.contains("anthropic"));
     }
 }
