@@ -5,3 +5,5 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 1e804262f0d77617efaabd615f1c888c54249dafd1e700ac9c87e5100bb95c50 # shrinks to provider = "openai", api_key = None, endpoint = None, model = None, timeout = None, retries = None
+cc 4b6ce86770af30bb9cae86da5f17c020d98137ca3fe1d3c9120a9290da53f3cd # shrinks to provider = "openai", api_key = None, endpoint = Some(" "), model = None, timeout = None, retries = None
+cc fe2d8ef39a251e327892ae04d5cfb912bcf33603f35125aebc92ca2c605897e3 # shrinks to provider = "openai", api_key = Some(" "), endpoint = None, model = None, timeout = None, retries = None

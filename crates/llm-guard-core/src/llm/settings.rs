@@ -220,16 +220,9 @@ mod tests {
                 format!("  {}  ", provider)
             );
 
-            match provider.as_str() {
-                "noop" => {
-                    if let Some(key) = api_key.clone() {
-                        vars.insert(LlmSettings::API_KEY_ENV.to_string(), format!("  {}  ", key));
-                    }
-                }
-                _ => {
-                    let key = api_key.clone().unwrap_or_else(|| "secret-key".to_string());
-                    vars.insert(LlmSettings::API_KEY_ENV.to_string(), format!("  {}  ", key));
-                }
+            let trimmed_key = api_key.clone().map(|k| k.trim().to_string());
+            if let Some(ref key) = trimmed_key {
+                vars.insert(LlmSettings::API_KEY_ENV.to_string(), format!("  {}  ", key));
             }
 
             if let Some(ep) = endpoint.clone() {
@@ -245,32 +238,46 @@ mod tests {
                 vars.insert(LlmSettings::RETRIES_ENV.to_string(), format!("  {}  ", r));
             }
 
-            let settings = LlmSettings::from_map(vars).expect("settings should parse");
-            prop_assert_eq!(settings.provider, provider.trim());
-            if provider == "noop" {
-                if let Some(key) = api_key.clone() {
-                    prop_assert_eq!(settings.api_key, key.trim());
+            let expect_error = provider != "noop"
+                && trimmed_key
+                    .as_ref()
+                    .map(|key| key.trim().is_empty())
+                    .unwrap_or(true);
+
+            let result = LlmSettings::from_map(vars);
+            if expect_error {
+                prop_assert!(result.is_err());
+            } else {
+                let settings = result.expect("settings should parse");
+                prop_assert_eq!(settings.provider, provider.trim());
+                if provider == "noop" {
+                    if let Some(key) = trimmed_key.clone() {
+                        prop_assert_eq!(settings.api_key, key.trim());
+                    } else {
+                        prop_assert!(settings.api_key.is_empty());
+                    }
                 } else {
-                    prop_assert!(settings.api_key.is_empty());
+                    let expected_key = trimmed_key.unwrap();
+                    prop_assert_eq!(settings.api_key, expected_key.trim());
                 }
-            } else {
-                let expected_key = api_key.unwrap_or_else(|| "secret-key".to_string());
-                prop_assert_eq!(settings.api_key, expected_key.trim());
+                let expected_endpoint = endpoint.and_then(|ep| {
+                    let trimmed = ep.trim();
+                    if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+                });
+                prop_assert_eq!(settings.endpoint.as_ref().map(|s| s.as_str()), expected_endpoint.as_deref());
+
+                let expected_model = model.and_then(|m| {
+                    let trimmed = m.trim();
+                    if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+                });
+                prop_assert_eq!(settings.model.as_ref().map(|s| s.as_str()), expected_model.as_deref());
+                match timeout {
+                    Some(t) => prop_assert_eq!(settings.timeout_secs, Some(t)),
+                    None => prop_assert!(settings.timeout_secs.is_none()),
+                }
+                let expected_retries = retries.unwrap_or(2);
+                prop_assert_eq!(settings.max_retries, expected_retries);
             }
-            if let Some(ep) = endpoint {
-                prop_assert_eq!(settings.endpoint.as_deref(), Some(ep.trim()));
-            } else {
-                prop_assert!(settings.endpoint.is_none());
-            }
-            if let Some(model) = model {
-                prop_assert_eq!(settings.model.as_deref(), Some(model.trim()));
-            }
-            match timeout {
-                Some(t) => prop_assert_eq!(settings.timeout_secs, Some(t)),
-                None => prop_assert!(settings.timeout_secs.is_none()),
-            }
-            let expected_retries = retries.unwrap_or(2);
-            prop_assert_eq!(settings.max_retries, expected_retries);
         }
     }
 }

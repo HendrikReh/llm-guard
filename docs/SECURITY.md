@@ -15,6 +15,7 @@ This document summarizes the hardening measures currently implemented in LLM-Gua
 - **Excerpt redaction:** `extract_excerpt` truncates excerpts to `MAX_EXCERPT_CHARS` (240 characters) and sanitises UTF-8 boundaries. Property tests (`excerpt_limits_characters_and_boundaries`) guarantee the truncation never leaks more than the allowed window.
 - **Rule loading guardrails:** Property tests exercise synthetic keyword and regex packs to ensure `FileRuleRepository` fails fast on duplicates and never panics on large inputs.
 - **Finding validation:** The scanner validates every emitted `Finding` before returning a report, preventing downstream consumers from encountering invalid spans or weights.
+- **LLM fallback safety:** Rig adapter tests cover empty/error responses so verdict parsing falls back gracefully without panics.
 
 ## Testing & Tooling
 

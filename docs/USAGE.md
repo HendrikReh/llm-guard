@@ -194,6 +194,24 @@ llm-guard health [OPTIONS]
 - **Debugging:** Test provider connectivity before scanning
 - **Smoke Tests:** Verify multi-provider setup after configuration changes
 
+#### Rig-Backed Examples
+
+```bash
+# Use provider profiles (llm_providers.yaml) and add rig-powered verdicts
+llm-guard scan --file samples/chat.txt --with-llm
+
+# Override provider/model inline (falls back to rig.rs OpenAI adapter)
+llm-guard scan --file samples/chat.txt --with-llm \
+  --provider openai \
+  --model gpt-4o-mini \
+  --endpoint https://api.openai.com
+
+# Target Anthropic via rig.rs with a custom project
+llm-guard scan --file samples/chat.txt --with-llm \
+  --provider anthropic \
+  --project security-research
+```
+
 **Example Output:**
 ```
 Provider: openai
@@ -428,6 +446,29 @@ fi
 llm-guard scan --file /var/log/chatbot.log --tail --with-llm --json | \
   jq 'select(.risk_score > 50)'
 ```
+
+---
+
+## Rig Provider Walkthrough
+
+1. **Create provider profile:** Add entries to `llm_providers.yaml`, for example:
+
+   ```yaml
+   providers:
+     - name: openai
+       api_key: ${OPENAI_API_KEY}
+     - name: anthropic
+       api_key: ${ANTHROPIC_API_KEY}
+       project: security-research
+   ```
+
+2. **Prime the environment:** Profiles are auto-loaded when `--with-llm` is used. CLI flags (`--model`, `--project`, `--endpoint`, `--workspace`) take precedence if supplied.
+
+3. **Run the scan:** `llm-guard scan --file samples/chat.txt --with-llm` will ask the rig-backed provider for a JSON verdict and merge it into the heuristic report.
+
+4. **Inspect streaming mode:** Combine `--tail` with `--with-llm` to watch long-running logs. The tail loop is fuzz-tested to handle rapid file mutations without panicking.
+
+> Screenshots used in demos: `docs/screenshots/rig-openai.png` and `docs/screenshots/rig-anthropic.png` (**not version-controlled**; skip if unavailable).
 
 ---
 

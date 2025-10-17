@@ -462,6 +462,7 @@ fn strip_code_fence(input: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn openai_settings() -> LlmSettings {
         LlmSettings {
@@ -577,5 +578,41 @@ mod tests {
         let sanitized = sanitize_json_strings(payload);
         assert!(sanitized.ends_with("\"}"));
         assert!(sanitized.contains("\\n"));
+    }
+
+    fn json_body_strategy() -> impl Strategy<Value = String> {
+        prop_oneof![
+            Just("{\"label\":\"safe\"}".to_string()),
+            Just("{\"label\":\"suspicious\",\"mitigation\":\"Review\"}".to_string()),
+            Just("{\n  \"label\": \"malicious\",\n  \"rationale\": \"Nested\"\n}".to_string())
+        ]
+    }
+
+    proptest! {
+        #[test]
+        fn extract_json_payload_strips_known_fences(body in json_body_strategy()) {
+            let fenced = format!("```json\n{}\n```", body);
+            let payload = extract_json_payload(&fenced);
+            prop_assert_eq!(payload, body.trim());
+
+            let fenced_caps = format!(" ``` {} ``` ", body);
+            let payload_caps = extract_json_payload(&fenced_caps);
+            prop_assert_eq!(payload_caps, body.trim());
+        }
+
+        #[test]
+        fn extract_json_payload_preserves_unfenced(text in json_body_strategy()) {
+            let decorated = format!("\n  {}\n ", text);
+            let payload = extract_json_payload(&decorated);
+            prop_assert_eq!(payload, text.trim());
+        }
+    }
+
+    #[test]
+    fn fallback_model_verdict_contains_provider() {
+        let verdict = fallback_model_verdict("anthropic");
+        assert_eq!(verdict.label, "unknown");
+        assert!(verdict.rationale.contains("anthropic"));
+        assert!(!verdict.mitigation.is_empty());
     }
 }

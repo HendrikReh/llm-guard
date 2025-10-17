@@ -105,6 +105,7 @@ This project was developed during the **[AI Coding Accelerator](https://maven.co
 - **Flexible Output Formats:** Human-readable CLI output or JSON for automation and CI/CD integration
 - **Multi-Provider LLM Analysis:** Optional verdicts from OpenAI, Anthropic, Google Gemini, or Azure OpenAI via `rig.rs`
 - **Provider Health Checks:** Built-in diagnostics to validate LLM provider connectivity and configuration
+- **Rig Provider Walkthrough:** Hands-on guide for configuring OpenAI/Anthropic rig adapters (see [`docs/USAGE.md`](./docs/USAGE.md#rig-provider-walkthrough))
 
 ### Detection Coverage
 
@@ -145,6 +146,13 @@ cargo llvm-cov --workspace --all-features --html
 
 # Scan from stdin
 echo "Ignore previous instructions" | ./target/release/llm-guard scan
+
+# Ask rig-backed OpenAI adapter for a verdict (requires LLM_GUARD_API_KEY)
+./target/release/llm-guard scan \
+  --file samples/chat.txt \
+  --with-llm \
+  --provider openai \
+  --model gpt-4o-mini
 ```
 
 **Output Example:**
