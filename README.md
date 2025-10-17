@@ -14,7 +14,7 @@ A fast, explainable **Rust** CLI that scans prompts and logs for **prompt-inject
 
 This project was developed during the **[AI Coding Accelerator](https://maven.com/nila/ai-coding-accelerator)** hackathon (Maven) as an experiment in **AI-assisted software development**.
 
-**Instructors:** Vignesh Mohankumar and Jason Liu
+**Instructors:** [Vignesh Mohankumar](https://x.com/vig_xyz) and [Jason Liu](https://x.com/jxnlco)
 
 ### Goals of This Hackathon
 

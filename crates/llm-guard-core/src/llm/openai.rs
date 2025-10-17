@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use tokio::time::sleep;
 
 #[derive(Debug, Clone)]
 pub struct OpenAiClient {
@@ -69,6 +70,7 @@ impl LlmClient for OpenAiClient {
         };
 
         let mut attempt = 0u32;
+        let mut backoff = Duration::from_millis(200);
         loop {
             let response = self
                 .http
@@ -84,6 +86,8 @@ impl LlmClient for OpenAiClient {
                     if attempt >= self.max_retries {
                         return Err(err).context("failed to call OpenAI chat completions API");
                     }
+                    sleep(backoff).await;
+                    backoff = (backoff * 2).min(Duration::from_secs(5));
                     attempt += 1;
                     continue;
                 }
@@ -95,6 +99,8 @@ impl LlmClient for OpenAiClient {
                     let body = response.text().await.unwrap_or_default();
                     bail!("OpenAI API error ({}): {}", status, body);
                 }
+                sleep(backoff).await;
+                backoff = (backoff * 2).min(Duration::from_secs(5));
                 attempt += 1;
                 continue;
             }
