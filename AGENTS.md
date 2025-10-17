@@ -31,7 +31,7 @@ You are assisting in the **AI Coding Accelerator Hackathon** organized by [Maven
 - Optional LLM-powered analysis
 
 **Key Documents:**
-- `LLM-Guard.md` - Product Requirements Document
+- `PRD.md` - Product Requirements Document
 - `PLAN.md` - Implementation roadmap and progress tracking
 - `README.md` - User-facing documentation
 
@@ -170,7 +170,7 @@ enum Commands {
 
 ### 4.1 Before Writing Code
 
-1. **Review requirements:** Check `LLM-Guard.md` for feature specs
+1. **Review requirements:** Check `PRD.md` for feature specs
 2. **Check the plan:** Review `PLAN.md` for current phase and tasks
 3. **Understand the context:** Read related code if modifying existing features
 4. **Clarify unknowns:** Ask questions before making assumptions
@@ -477,7 +477,7 @@ Before marking a feature complete, verify:
 ## 11. Reference Quick Links
 
 ### Key Documents
-- **PRD:** `LLM-Guard.md` - Complete product specification
+- **PRD:** `PRD.md` - Complete product specification
 - **Plan:** `PLAN.md` - Implementation roadmap
 - **README:** `README.md` - User documentation
 
@@ -565,4 +565,4 @@ Your contribution is successful when:
 
 ---
 
-**Ready to code!** Review the PRD (`LLM-Guard.md`) and dive into the implementation. When in doubt, ask questions. Good luck! 🚀
+**Ready to code!** Review the PRD (`PRD.md`) and dive into the implementation. When in doubt, ask questions. Good luck! 🚀
