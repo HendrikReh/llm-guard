@@ -1,13 +1,17 @@
 use std::path::{Path, PathBuf};
+use std::process;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use llm_guard_core::{
-    render_report, DefaultScanner, FileRuleRepository, OutputFormat, RuleKind, RuleRepository,
-    Scanner,
+    render_report, DefaultScanner, FileRuleRepository, OutputFormat, RiskBand, RuleKind,
+    RuleRepository, Scanner,
 };
-use tokio::io::{self, AsyncReadExt};
+use tokio::{
+    fs,
+    io::{self, AsyncReadExt},
+};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -51,48 +55,25 @@ enum Commands {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+async fn main() {
+    match run().await {
+        Ok(code) => process::exit(code),
+        Err(err) => {
+            eprintln!("Error: {:#}", err);
+            process::exit(1);
+        }
+    }
+}
+
+async fn run() -> Result<i32> {
     init_tracing();
     let cli = Cli::parse();
     match cli.command.unwrap_or(Commands::ListRules { json: false }) {
-        Commands::ListRules { json } => list_rules(&cli.rules_dir, json).await?,
-        Commands::Scan { file, json } => scan_input(&cli.rules_dir, file.as_deref(), json).await?,
-    }
-    Ok(())
-}
-
-async fn scan_input(rules_dir: &Path, file: Option<&Path>, json: bool) -> Result<()> {
-    let repo = Arc::new(FileRuleRepository::new(rules_dir));
-    let scanner = DefaultScanner::new(Arc::clone(&repo));
-    let text = read_input(file)
-        .await
-        .with_context(|| "failed to read input for scanning")?;
-    let report = scanner.scan(&text).await?;
-    let rendered = render_report(
-        &report,
-        if json {
-            OutputFormat::Json
-        } else {
-            OutputFormat::Human
-        },
-    )?;
-    println!("{}", rendered);
-    Ok(())
-}
-
-async fn read_input(path: Option<&Path>) -> Result<String> {
-    if let Some(path) = path {
-        Ok(tokio::fs::read_to_string(path)
-            .await
-            .with_context(|| format!("failed to read input file {}", path.display()))?)
-    } else {
-        let mut buf = String::new();
-        let mut stdin = io::stdin();
-        stdin
-            .read_to_string(&mut buf)
-            .await
-            .context("failed to read from stdin")?;
-        Ok(buf)
+        Commands::ListRules { json } => {
+            list_rules(&cli.rules_dir, json).await?;
+            Ok(0)
+        }
+        Commands::Scan { file, json } => scan_input(&cli.rules_dir, file.as_deref(), json).await,
     }
 }
 
@@ -131,6 +112,49 @@ async fn list_rules(rules_dir: &Path, json: bool) -> Result<()> {
         );
     }
     Ok(())
+}
+
+async fn scan_input(rules_dir: &Path, file: Option<&Path>, json: bool) -> Result<i32> {
+    let repo = Arc::new(FileRuleRepository::new(rules_dir));
+    let scanner = DefaultScanner::new(Arc::clone(&repo));
+    let text = read_input(file)
+        .await
+        .with_context(|| "failed to read input for scanning")?;
+    let report = scanner.scan(&text).await?;
+    let rendered = render_report(
+        &report,
+        if json {
+            OutputFormat::Json
+        } else {
+            OutputFormat::Human
+        },
+    )?;
+    println!("{}", rendered);
+    Ok(exit_code_for_band(report.risk_band))
+}
+
+async fn read_input(path: Option<&Path>) -> Result<String> {
+    if let Some(path) = path {
+        Ok(fs::read_to_string(path)
+            .await
+            .with_context(|| format!("failed to read input file {}", path.display()))?)
+    } else {
+        let mut buf = String::new();
+        let mut stdin = io::stdin();
+        stdin
+            .read_to_string(&mut buf)
+            .await
+            .context("failed to read from stdin")?;
+        Ok(buf)
+    }
+}
+
+fn exit_code_for_band(band: RiskBand) -> i32 {
+    match band {
+        RiskBand::Low => 0,
+        RiskBand::Medium => 2,
+        RiskBand::High => 3,
+    }
 }
 
 fn init_tracing() {
