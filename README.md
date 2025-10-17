@@ -334,6 +334,7 @@ Comprehensive documentation designed for both human developers and AI coding ass
 | **[`PLAN.md`](./PLAN.md)** | Implementation roadmap with phase-by-phase tracking | Project contributors |
 | **[`AGENTS.md`](./AGENTS.md)** | Onboarding guide for AI coding assistants | AI agents, developers |
 | **[`docs/TESTING_GUIDE.md`](./docs/TESTING_GUIDE.md)** | Testing strategy, commands, and troubleshooting | Developers, QA |
+| **[`docs/SECURITY.md`](./docs/SECURITY.md)** | Security guardrails, runtime expectations, and regression coverage | Security reviewers, contributors |
 | **[`docs/ADR/`](./docs/ADR/)** | Architecture Decision Records | Technical stakeholders |
 
 ## AI-Assisted Development Insights

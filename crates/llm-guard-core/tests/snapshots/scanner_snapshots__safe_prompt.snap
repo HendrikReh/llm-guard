@@ -1,0 +1,17 @@
+---
+source: crates/llm-guard-core/tests/scanner_snapshots.rs
+expression: snapshot
+---
+{
+  "findings": [],
+  "fixture": "safe_prompt.txt",
+  "normalized_len": 82,
+  "risk_band": "low",
+  "risk_score": 0.0,
+  "score_breakdown": {
+    "adjusted_total": 0.0,
+    "families": [],
+    "length_factor": 0.5,
+    "raw_total": 0.0
+  }
+}

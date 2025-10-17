@@ -19,26 +19,36 @@ Traditional ML-based approaches would be opaque "black boxes" that don't meet ou
 
 Implement a **weighted heuristic scoring algorithm** with the following components:
 
-### Formula
+### Formula (as implemented in v0.4.1)
 ```
 base_score = Σ (finding.weight × multiplier)
   where multiplier = 1.0 for first occurrence per rule family
-                   = 0.5 for subsequent occurrences (diminishing returns)
+                   = 0.5 for subsequent occurrences (family dampening)
 
-length_normalization = clamp(text_length / 800, 0.5, 1.5)
+length_factor = clamp(text_length / baseline_chars, min_factor, max_factor)
+  where baseline_chars = 800
+        min_factor = 0.5
+        max_factor = 1.5
 
-synergy_bonus = +5 if high-severity rules co-occur within 200 chars
-
-final_score = clamp(base_score × length_normalization + synergy_bonus, 0, 100)
+final_score = clamp(base_score × length_factor, 0, 100)
 ```
 
+**Note:** Synergy bonuses (proximity-based scoring boosts) were planned but not implemented in v0.4.1. Future enhancement tracked in Phase 10 (optimization).
+
 ### Rule Weight Ranges
-- Instruction override: 12-18
-- Data exfiltration: 12-20
-- Policy subversion: 10-16
-- Model exploitation: 8-12
-- Obfuscation: 5-10
-- Prompt leak bait: 12-18
+Rule families are determined by the prefix before the first underscore in the rule ID (e.g., `PROMPT_LEAK` → family `PROMPT`, `INSTR_IGNORE` → family `INSTR`).
+
+Current rule weights (as of v0.4.1):
+- CODE family (code injection): 45
+- PROMPT family (prompt leak): 40
+- INSTR family (instruction override): 30-35
+- MODEL family (model override): 30
+
+**Weight Guidelines:**
+- Critical attacks (code execution, prompt leak): 40-45
+- High severity (instruction override): 30-35
+- Medium severity (model manipulation): 25-30
+- Low severity (obfuscation, edge cases): 10-20
 
 ### Risk Rubric
 - 0-24: Low (proceed)
@@ -84,20 +94,23 @@ final_score = clamp(base_score × length_normalization + synergy_bonus, 0, 100)
 ## Implementation Notes
 
 ### Code Location
-- Core algorithm: `crates/llm-guard-core/src/scanner/heuristics.rs`
-- Rule weights: `rules/patterns.json` and `rules/keywords.txt`
-- Rubric thresholds: Configurable via CLI or config file
+- **Core algorithm:** `crates/llm-guard-core/src/scanner/default_scanner.rs` (`score_findings()` method)
+- **Config:** `crates/llm-guard-core/src/scanner/mod.rs` (`RiskConfig` struct)
+- **Rule weights:** `rules/patterns.json` (regex) and `rules/keywords.txt` (exact match)
+- **Risk thresholds:** `RiskThresholds` in `scanner/mod.rs` (default: 25, 60)
 
 ### Testing Strategy
-- Unit tests for scoring components (length norm, synergy, diminishing returns)
-- Integration tests with known attack samples
-- Property tests to ensure score always in [0, 100] range
+- **Unit tests:** Scoring components (length factor, family dampening)
+- **Integration tests:** Known attack samples in `default_scanner.rs`
+- **Property tests:** Score always in [0, 100] range (`proptest` in `scanner/mod.rs`)
+- **Current coverage:** 44 tests (34 passing, 10 ignored for network)
 
 ### Tuning Guidance
-Document in `README.md`:
-- How to adjust rule weights
-- How to customize thresholds
-- How to monitor false positive/negative rates
+Users can customize:
+- **Rule weights:** Edit `rules/patterns.json` and `rules/keywords.txt`
+- **Risk thresholds:** Modify `RiskConfig::default()` in code (CLI flags not yet exposed)
+- **Length normalization:** Adjust `baseline_chars`, `min_length_factor`, `max_length_factor`
+- **Family dampening:** Tune `family_dampening` (0.0 = no dampening, 1.0 = full credit for all occurrences)
 
 ## References
 
