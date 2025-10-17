@@ -206,9 +206,10 @@ To provide developers with a fast, transparent, and integrable security tool tha
 ┌─────────────────────────────────────────┐
 │     LLM Adapter (Optional)              │
 │  ┌──────────────────────────────────┐   │
-│  │ • API Client (OpenAI/Codex)      │   │
+│  │ • Provider Abstraction (rig-rs)   │   │
 │  │ • Prompt Templates               │   │
 │  │ • Response Parsing               │   │
+│  │ • Retry / Backoff                │   │
 │  └──────────────────────────────────┘   │
 └─────────────────────────────────────────┘
                     │
