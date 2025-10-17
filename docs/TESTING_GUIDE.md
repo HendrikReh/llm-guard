@@ -4,6 +4,53 @@
 
 This document describes the testing strategy, test execution, and quality assurance practices for LLM-Guard.
 
+## Table of Contents
+
+- [Test Suite Overview](#test-suite-overview)
+- [Quick Reference](#quick-reference)
+  - [Most Common Commands](#most-common-commands)
+  - [Selective Test Execution](#selective-test-execution)
+  - [Ignored Tests](#ignored-tests)
+  - [Alias Commands](#alias-commands-if-configured-in-cargoconfigtoml)
+- [Test Categories](#test-categories)
+  - [Unit Tests (28 tests)](#unit-tests-28-tests-)
+  - [Integration Tests (2 tests)](#integration-tests-2-tests-)
+  - [Network Tests (8 tests - Ignored)](#network-tests-8-tests---ignored-)
+  - [TLS Tests (2 tests - Ignored on macOS)](#tls-tests-2-tests---ignored-on-macos-)
+- [Running Tests in CI/CD](#running-tests-in-cicd)
+  - [GitHub Actions Example](#github-actions-example)
+  - [Pre-commit Hook](#pre-commit-hook)
+- [Test Fixtures](#test-fixtures)
+  - [Sample Prompts](#sample-prompts)
+  - [Rule Packs](#rule-packs)
+- [Writing New Tests](#writing-new-tests)
+  - [Unit Test Template](#unit-test-template)
+  - [Integration Test Template](#integration-test-template)
+  - [Network Test Template](#network-test-template)
+- [Test Coverage](#test-coverage)
+  - [Generating Coverage Reports](#generating-coverage-reports)
+  - [Coverage Targets](#coverage-targets)
+- [Debugging Failed Tests](#debugging-failed-tests)
+  - [Show Test Output](#show-test-output)
+  - [Run Single Test](#run-single-test)
+  - [Common Test Failures](#common-test-failures)
+  - [Update Snapshot Tests](#update-snapshot-tests-if-using-insta)
+- [Performance Testing](#performance-testing)
+  - [Benchmarks](#benchmarks)
+  - [Load Testing](#load-testing)
+- [Test Maintenance](#test-maintenance)
+  - [Adding New Provider Tests](#adding-new-provider-tests)
+  - [Updating Test Fixtures](#updating-test-fixtures)
+  - [Regression Test Protocol](#regression-test-protocol)
+- [Troubleshooting](#troubleshooting)
+  - ["TLS backend cannot be initialized" on macOS](#tls-backend-cannot-be-initialized-on-macos)
+  - ["Address already in use" in network tests](#address-already-in-use-in-network-tests)
+  - [Slow test execution](#slow-test-execution)
+  - [Tests pass locally but fail in CI](#tests-pass-locally-but-fail-in-ci)
+  - ["No rule ID" errors](#no-rule-id-errors)
+- [Related Documentation](#related-documentation)
+- [Contributing Tests](#contributing-tests)
+
 ## Test Suite Overview
 
 LLM-Guard has comprehensive test coverage across multiple levels following the test pyramid strategy:

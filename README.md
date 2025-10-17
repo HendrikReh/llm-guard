@@ -23,6 +23,37 @@
 
 A fast, explainable **Rust** CLI that scans prompts and logs for **prompt-injection & jailbreak indicators**, scores the risk (0–100), and optionally asks an LLM for a short verdict and mitigation tip.
 
+## Table of Contents
+
+- [Hackathon Context](#hackathon-context)
+  - [Goals of This Hackathon](#goals-of-this-hackathon)
+  - [What Makes This Project Special](#what-makes-this-project-special)
+- [Project Status](#project-status)
+- [Features](#features)
+  - [Core Capabilities](#core-capabilities)
+  - [Detection Coverage](#detection-coverage)
+- [Quick Start](#quick-start)
+  - [Installation](#installation)
+  - [Usage Examples](#usage-examples)
+  - [Configuration](#configuration)
+- [Technical Overview](#technical-overview)
+  - [How It Works](#how-it-works)
+  - [Architecture](#architecture)
+  - [Detection Strategy](#detection-strategy)
+- [Project Documentation](#project-documentation)
+- [AI-Assisted Development Insights](#ai-assisted-development-insights)
+  - [Development Workflow (Hendrik's Approach)](#development-workflow-hendriks-approach)
+  - [What Worked Well](#what-worked-well)
+  - [Challenges & Learnings](#challenges--learnings)
+  - [Recommendations for AI-Assisted Projects](#recommendations-for-ai-assisted-projects)
+- [Contributing](#contributing)
+  - [How to Contribute](#how-to-contribute)
+- [License & Disclaimer](#license--disclaimer)
+  - [License](#license)
+  - [Security Disclaimer](#security-disclaimer)
+  - [AI Development Notice](#ai-development-notice)
+- [Acknowledgments](#acknowledgments)
+
 ## Hackathon Context
 
 This project was developed during the **[AI Coding Accelerator](https://maven.com/nila/ai-coding-accelerator)** hackathon (Maven) as an experiment in **AI-assisted software development**.
