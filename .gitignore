@@ -11,3 +11,6 @@ coverage/
 llm_providers.yaml
 .env.local
 /dist/
+/PROJECT_SUMMARY.md
+/RIG_RS_MIGRATION.PLAN.md
+/RELEASE_NOTES.md
