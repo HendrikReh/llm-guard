@@ -320,6 +320,7 @@ pub trait VerdictProvider: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn rule_validation_rejects_invalid_weight() {
@@ -398,5 +399,45 @@ mod tests {
         assert_eq!(RiskBand::from_score(25.0), RiskBand::Medium);
         assert_eq!(RiskBand::from_score(59.9), RiskBand::Medium);
         assert_eq!(RiskBand::from_score(60.0), RiskBand::High);
+    }
+
+    proptest! {
+        #[test]
+        fn score_breakdown_never_exceeds_bounds(
+            adjusted_total in -1000.0f32..1000.0,
+            length_factor in -10.0f32..10.0
+        ) {
+            let breakdown = ScoreBreakdown {
+                raw_total: adjusted_total,
+                adjusted_total,
+                length_factor,
+                family_contributions: Vec::new(),
+            };
+
+            let score = breakdown.risk_score();
+            prop_assert!(score >= 0.0);
+            prop_assert!(score <= 100.0);
+        }
+
+        #[test]
+        fn length_factor_respects_clamp(
+            baseline in 1usize..=10_000usize,
+            min_factor in 0.1f32..1.0,
+            max_factor in 1.0f32..5.0,
+            text_len in 0usize..=50_000usize
+        ) {
+            prop_assume!(min_factor <= max_factor);
+            let config = RiskConfig {
+                thresholds: RiskThresholds::default(),
+                baseline_chars: baseline,
+                min_length_factor: min_factor,
+                max_length_factor: max_factor,
+                family_dampening: 0.5,
+            };
+
+            let factor = config.length_factor(text_len);
+            prop_assert!(factor >= config.min_length_factor);
+            prop_assert!(factor <= config.max_length_factor);
+        }
     }
 }
