@@ -6,8 +6,8 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use llm_guard_core::{
-    render_report, DefaultScanner, FileRuleRepository, LlmClient, LlmSettings, NoopLlmClient,
-    OutputFormat, RiskBand, RuleKind, RuleRepository, Scanner,
+    build_client, render_report, DefaultScanner, FileRuleRepository, LlmSettings, OutputFormat,
+    RiskBand, RuleKind, RuleRepository, Scanner,
 };
 use tokio::{
     fs,
@@ -154,11 +154,8 @@ async fn scan_input(
         let mut report = scanner.scan(&text).await?;
         if with_llm {
             let settings = LlmSettings::from_env()?;
-            eprintln!(
-                "LLM adapter for provider `{}` not yet implemented; returning placeholder verdict.",
-                settings.provider
-            );
-            let verdict = NoopLlmClient::default().enrich(&text, &report).await?;
+            let client = build_client(&settings)?;
+            let verdict = client.enrich(&text, &report).await?;
             report.llm_verdict = Some(verdict);
         }
         let rendered = render_report(

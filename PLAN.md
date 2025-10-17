@@ -43,15 +43,15 @@ Status key: `[ ]` not started • `[~]` in progress • `[x]` done
 ## Phase 5 — Reporting & CLI
 
 - [x] Build `report` module with human-readable (ANSI-aware) and JSON reporters; include error paths and quiet mode.
-- [~] Design `cli.rs` using `clap` with subcommands/flags (`--input`, `--tail`, `--with-llm`, `--json`).
+- [x] Design `cli.rs` using `clap` with subcommands/flags (`--input`, `--tail`, `--with-llm`, `--json`).
 - [x] Implement input readers (stdin, file, optional live tail stub) with streaming support and size limits.
 - [x] Wire CLI to scanner pipeline, ensuring graceful exit codes (0 safe, 2 medium, 3 high, 1 error) for CI.
 
 ## Phase 6 — Optional LLM Adapter
 
-- [ ] Define `LlmClient` trait with async interface and implement Codex adapter (feature-gated, requires API key).
-- [ ] Add request shaping (prompt template, truncation) and response parsing with guardrails/timeouts.
-- [ ] Provide dry-run/mock adapter for tests; record usage metrics (latency, token count logging via `tracing`).
+- [x] Define `LlmClient` trait with async interface and implement Codex adapter (feature-gated, requires API key).
+- [x] Add request shaping (prompt template, truncation) and response parsing with guardrails/timeouts.
+- [x] Provide dry-run/mock adapter for tests; record usage metrics (latency, token count logging via `tracing`).
 - [ ] Update CLI flag `--with-llm` to call adapter and merge verdict into `ScanReport`.
 
 ## Phase 7 — Quality Engineering
