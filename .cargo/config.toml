@@ -1,6 +1,7 @@
 [alias]
 lint = "clippy --workspace --all-targets --all-features -D warnings"
 test-all = "test --workspace --all-features"
+nextest-ci = "nextest run --workspace --all-features --profile ci --failure-output=final"
 cov = "llvm-cov --workspace --ignore-filename-regex '(.cargo|.git|/tests?/)' --html"
 audit = "audit"
 deny = "deny check"

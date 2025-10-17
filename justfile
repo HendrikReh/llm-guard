@@ -7,7 +7,11 @@ lint:
 	cargo lint
 
 test:
-	cargo test-all
+	if command -v cargo-nextest >/dev/null 2>&1; then \
+		cargo nextest run --workspace --all-features --profile ci --failure-output=final; \
+	else \
+		cargo test --workspace --all-features; \
+	fi
 
 cov:
 	cargo cov

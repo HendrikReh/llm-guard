@@ -1,0 +1,11 @@
+[profile.default]
+status-level = "pass"
+final-status-level = "fail"
+fail-fast = false
+retries = 1
+
+[profile.ci]
+status-level = "pass"
+final-status-level = "pass"
+fail-fast = false
+retries = 0
