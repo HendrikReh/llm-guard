@@ -39,13 +39,16 @@ impl LlmClient for NoopLlmClient {
 }
 
 pub fn build_client(settings: &LlmSettings) -> Result<Box<dyn LlmClient>> {
-    match ProviderKind::from_provider(settings.provider.trim())? {
+    let kind = ProviderKind::from_provider(settings.provider.trim())?;
+    match kind {
         ProviderKind::Noop => Ok(Box::new(NoopLlmClient::default())),
-        ProviderKind::OpenAi => Ok(Box::new(OpenAiClient::new(settings)?)),
+        ProviderKind::OpenAi => rig_adapter::RigLlmClient::for_kind(ProviderKind::OpenAi, settings),
         ProviderKind::Azure => Ok(Box::new(AzureOpenAiClient::new(settings)?)),
         ProviderKind::Anthropic => Ok(Box::new(AnthropicClient::new(settings)?)),
         ProviderKind::Gemini => Ok(Box::new(GeminiClient::new(settings)?)),
-        ProviderKind::Rig => rig_adapter::RigLlmClient::from_settings(settings),
+        ProviderKind::Rig => {
+            bail!("Select a specific rig-enabled provider (e.g. openai) in LLM_GUARD_PROVIDER")
+        }
     }
 }
 

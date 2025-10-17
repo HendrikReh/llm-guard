@@ -168,6 +168,9 @@ export LLM_GUARD_API_VERSION=2024-02-15-preview
 | `LLM_GUARD_API_KEY` | API key/token (required for real providers) | - |
 | `LLM_GUARD_ENDPOINT` | Custom endpoint/base URL | Provider default |
 | `LLM_GUARD_MODEL` | Model name (e.g., `gpt-4o-mini`) | Provider default |
+| `LLM_GUARD_DEPLOYMENT` | Deployment identifier for rig-managed providers (e.g., Azure) | - |
+| `LLM_GUARD_PROJECT` | Provider project or tenant (Gemini, Anthropic) | - |
+| `LLM_GUARD_WORKSPACE` | Provider workspace identifier (if required) | - |
 | `LLM_GUARD_TIMEOUT_SECS` | HTTP timeout in seconds | `30` |
 | `LLM_GUARD_MAX_RETRIES` | Retry count for failed calls | `2` |
 | `LLM_GUARD_API_VERSION` | API version (Azure OpenAI) | Provider default |

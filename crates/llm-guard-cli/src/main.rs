@@ -228,6 +228,9 @@ async fn scan_input(
                         api_key: String::new(),
                         endpoint: endpoint_override.map(|s| s.to_string()),
                         model: model_override.map(|s| s.to_string()),
+                        deployment: None,
+                        project: None,
+                        workspace: None,
                         timeout_secs: Some(30),
                         max_retries: 2,
                         api_version: None,
@@ -242,6 +245,15 @@ async fn scan_input(
         }
         if let Some(model) = model_override {
             settings.model = Some(model.to_string());
+        }
+        if settings.deployment.is_none() {
+            settings.deployment = std::env::var("LLM_GUARD_DEPLOYMENT").ok();
+        }
+        if settings.project.is_none() {
+            settings.project = std::env::var("LLM_GUARD_PROJECT").ok();
+        }
+        if settings.workspace.is_none() {
+            settings.workspace = std::env::var("LLM_GUARD_WORKSPACE").ok();
         }
         if let Some(endpoint) = endpoint_override {
             settings.endpoint = Some(endpoint.to_string());

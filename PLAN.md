@@ -111,14 +111,14 @@ This living document tracks implementation progress for the LLM-Guard project, d
 - [ ] Provide `examples/` (safe, suspicious, malicious sample files) and scripted demo
 - [ ] Prepare release checklist (versioning, changelog, policy pack publishing) and note future stretch goals (policy packs, sanitization, feedback loop)
 
-## Phase 9 — Migration to `rag.ts`
+## Phase 9 — Migration to `rig.rs`
 
-**Goal:** Transition multi-provider orchestration to [`rag.ts`](https://rig.rs/)
+**Goal:** Transition multi-provider orchestration to [`rig.rs`](https://rig.rs/)
 **AI Collaboration:** Adapter refactor, validation, regression testing
 
-- [ ] Replace existing LLM adapter wiring with `rag.ts`
-- [ ] Map current provider implementations (OpenAI, Anthropic, Gemini, noop) into `rag.ts` abstractions
-- [ ] Ensure configuration precedence (config → env → flags) is preserved via `rag.ts`
+- [~] Replace existing LLM adapter wiring with rig.rs (OpenAI now routes through the rig adapter)
+- [ ] Map current provider implementations (Anthropic, Gemini, Azure, noop) into rig.rs abstractions
+- [ ] Ensure configuration precedence (config → env → flags) is preserved via rig.rs
 - [ ] Update CLI tests and documentation to reflect the new runtime
 
 ---
