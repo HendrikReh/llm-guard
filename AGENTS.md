@@ -157,9 +157,19 @@ struct Cli {
 enum Commands {
     Scan {
         #[arg(long)]
-        file: Option<String>,
+        file: Option<PathBuf>,
         #[arg(long)]
         json: bool,
+        #[arg(long)]
+        tail: bool,
+        #[arg(long = "with-llm")]
+        with_llm: bool,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        endpoint: Option<String>,
     },
 }
 ```

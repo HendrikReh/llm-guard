@@ -128,12 +128,14 @@ To provide developers with a fast, transparent, and integrable security tool tha
 - **Priority:** P1 (Should Have)
 - **Description:** Get additional verdict from LLM
 - **Acceptance Criteria:**
-  - Opt-in via --with-llm flag
-  - Accept API key from environment variable
+  - Opt-in via `--with-llm` flag
+  - Accept API key from environment variables (`LLM_GUARD_*`)
+  - Allow provider override through CLI (`--provider`, `--model`, `--endpoint`) and env vars
+  - Support at least OpenAI, Anthropic Claude, Google Gemini, and noop providers
   - Return classification (safe/suspicious/malicious)
   - Provide rationale (≤40 words)
   - Suggest mitigation step
-  - Handle API failures gracefully
+  - Handle API failures gracefully with retries and clear error messaging
 
 ### 4.2 Secondary Features
 
