@@ -1,0 +1,10 @@
+[licenses]
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "Unlicense",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
