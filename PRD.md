@@ -43,6 +43,7 @@ To provide developers with a fast, transparent, and integrable security tool tha
 3. **Usability:** Single command integration into existing workflows
 4. **Transparency:** All risk scores backed by specific rule matches and weights
 5. **Extensibility:** Support custom rule sets and pluggable LLM providers
+6. **Safety:** Enforce a configurable input-size guardrail (default 1 MB) across stdin, files, and tail mode
 
 ### 2.3 Non-Goals (Out of Scope)
 
@@ -222,6 +223,10 @@ To provide developers with a fast, transparent, and integrable security tool tha
 │  └──────────────────────────────────┘   │
 └─────────────────────────────────────────┘
 ```
+
+- The CLI (`crates/llm-guard-cli`) handles argument parsing, configuration, and the shared chunked UTF-8 reader that enforces the configurable input-size guardrail (default 1 MB).
+- Core scanning, scoring, reporting, and LLM integrations live under `crates/llm-guard-core`.
+- See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for a deeper dive and [`docs/RULE_AUTHORING.md`](./docs/RULE_AUTHORING.md) when extending rule packs.
 
 ### 5.2 Data Models
 
@@ -485,6 +490,7 @@ Return JSON with keys: label, rationale, mitigation.
 | Startup Time | <50ms | Time to first scan |
 | Rule Loading | <10ms for 100 rules | Initialization |
 | LLM Call (optional) | <2s timeout | API response time |
+| Input Guardrail | Default 1 MB, configurable via flag/env | CLI configuration audited |
 
 ---
 
@@ -495,6 +501,7 @@ Return JSON with keys: label, rationale, mitigation.
 - **No persistent logging:** Raw inputs not stored unless --debug flag enabled
 - **Excerpt redaction:** Email addresses, API keys, tokens redacted in excerpts
 - **LLM truncation:** Snippets truncated to 800 chars before external API calls
+- **Bounded inputs:** Enforce streaming reads with a 1 MB default guardrail (CLI/env configurable) to prevent unbounded allocation
 - **API key security:** Accept from environment only; never log or expose
 
 ### 10.2 Threat Model
@@ -558,6 +565,8 @@ Return JSON with keys: label, rationale, mitigation.
 
 ## 12. Implementation Roadmap
 
+_Implementation status is tracked live in [`PLAN.md`](./PLAN.md); the original hour-by-hour scaffolding is retained below for historical context._
+
 ### Phase 1: Foundation (Hours 1-2)
 - [x] Bootstrap Rust project with Cargo
 - [ ] Configure dependencies (clap, regex, aho-corasick, serde)
@@ -584,8 +593,8 @@ Return JSON with keys: label, rationale, mitigation.
 ### Phase 5: Testing & Polish (Hour 7)
 - [ ] Unit test suite
 - [ ] E2E tests with seed data
-- [ ] Documentation and examples
-- [ ] README with usage guide
+- [x] Documentation (README, usage guide, architecture, rule authoring)
+- [ ] Example prompts / demos
 
 ### Phase 6: Stretch Features (Hour 8+)
 - [ ] Streaming/tail mode (--follow)
@@ -601,7 +610,7 @@ Return JSON with keys: label, rationale, mitigation.
 
 - [ ] All P0 features implemented and tested
 - [ ] Unit test coverage >80%
-- [ ] Documentation complete (README, examples)
+- [ ] Documentation complete (README, usage guide, architecture, rule authoring, examples)
 - [ ] Performance targets met (scan <100ms for 10K chars)
 - [ ] Zero critical security issues
 
