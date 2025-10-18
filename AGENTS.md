@@ -68,24 +68,22 @@ You are assisting in the **AI Coding Accelerator Hackathon** organized by [Maven
 
 ### 3.1 Project Structure
 
+The repository is a Cargo workspace:
+
 ```
 llm-guard/
-├── Cargo.toml              # Dependencies and metadata
-├── src/
-│   ├── main.rs             # Entry point
-│   ├── cli.rs              # Command-line interface
-│   ├── scanner/            # Core detection engine
-│   │   ├── mod.rs
-│   │   ├── rules.rs        # Rule loading and matching
-│   │   ├── heuristics.rs   # Scoring algorithms
-│   │   └── explain.rs      # Finding attribution
-│   ├── llm_adapter.rs      # LLM integration (optional)
-│   └── report.rs           # Output formatting
-├── rules/
-│   ├── keywords.txt        # Detection keywords
-│   └── patterns.json       # Regex patterns
-├── tests/                  # Integration tests
-└── samples/                # Test data
+├── Cargo.toml                # Workspace manifest
+├── crates/
+│   ├── llm-guard-cli/        # CLI entrypoint and integration tests
+│   │   └── src/main.rs
+│   └── llm-guard-core/       # Scanner engine, LLM adapters, reporting
+│       └── src/
+│           ├── scanner/
+│           ├── llm/
+│           └── report.rs
+├── rules/                    # keywords.txt + patterns.json packs
+├── docs/                     # Architecture, rule authoring, usage guides, ADRs
+└── tests/                    # Workspace-level integration/snapshot tests
 ```
 
 ### 3.2 Code Style
@@ -200,8 +198,9 @@ enum Commands {
 ### 4.3 Testing Expectations
 
 **Minimum Requirements:**
-- Unit tests for scoring algorithms
-- Integration tests for CLI commands
+- Unit tests for scoring algorithms and configuration helpers (e.g., input limit resolver)
+- Integration tests for CLI commands (scan, health, list-rules)
+- Property or fuzz tests for tail mode and rule parsing where practical
 - Test data for different risk levels (safe/suspicious/malicious)
 
 **Test Structure:**
@@ -295,22 +294,24 @@ cargo run -- scan --file samples/test.txt --json
 ### 6.2 Input Validation
 
 ```rust
-// Good: Validate and handle errors
 fn scan_file(path: &str) -> Result<ScanReport> {
+    const DEFAULT_MAX_INPUT_BYTES: usize = 1_000_000;
     if !Path::new(path).exists() {
-        anyhow::bail!("File not found: {}", path);
+        anyhow::bail!("File not found: {}", path.display());
     }
-
     let content = fs::read_to_string(path)
         .context("Failed to read file")?;
-
-    if content.len() > 1_000_000 {
-        anyhow::bail!("File too large (max 1MB)");
+    if content.len() > DEFAULT_MAX_INPUT_BYTES {
+        anyhow::bail!(
+            "File too large ({} bytes on disk, max {} bytes)",
+            content.len(),
+            DEFAULT_MAX_INPUT_BYTES
+        );
     }
-
     scan_text(&content)
 }
 ```
+> The CLI exposes `--max-input-bytes` and the `LLM_GUARD_MAX_INPUT_BYTES` env var for scenarios where you intentionally raise the guardrail. Use them sparingly and always consider memory impact.
 
 ---
 
@@ -491,9 +492,15 @@ Before marking a feature complete, verify:
 ## 11. Reference Quick Links
 
 ### Key Documents
-- **PRD:** `PRD.md` - Complete product specification
-- **Plan:** `PLAN.md` - Implementation roadmap
-- **README:** `README.md` - User documentation
+- **PRD:** `PRD.md` — Complete product specification
+- **Plan:** `PLAN.md` — Implementation roadmap
+- **Project README:** `README.md`
+- **Architecture Overview:** `docs/ARCHITECTURE.md`
+- **Rule Authoring Guide:** `docs/RULE_AUTHORING.md`
+- **CLI Usage Guide:** `docs/USAGE.md`
+- **Testing Guide:** `docs/TESTING_GUIDE.md`
+- **Security Notes:** `docs/SECURITY.md`
+- **ADRs:** `docs/ADR/`
 
 ### External Resources
 - [Rust Book](https://doc.rust-lang.org/book/)
