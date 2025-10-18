@@ -20,7 +20,7 @@
 [![RepoPrompt MCP](https://img.shields.io/badge/RepoPrompt-MCP-orange)](https://repoprompt.com/)
 [![Context7 MCP](https://img.shields.io/badge/Context7-MCP-orange)](https://context7.com/)
 
-> **AI Coding Hackathon Project** · Fast, explainable Rust CLI that scans prompts for prompt-injection and jailbreak indicators, scores the risk (0–100), and optionally augments the report with an LLM verdict and mitigation tip.
+> **AI Coding Hackathon Project** · Built collaboratively by a human — acting as architect, tester, product manager — and AI agents during Maven’s Accelerator. The result is a fast, explainable Rust CLI that scans prompts for jailbreak indicators, clamps scores with a transparent rubric, and now adds a configurable input guardrail plus optional LLM verdicts.
 
 ## Table of Contents
 
