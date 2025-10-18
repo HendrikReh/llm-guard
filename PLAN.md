@@ -18,7 +18,7 @@ This living document tracks implementation progress for the LLM-Guard project, d
 
 - ✅ Core scanner pipeline, reporting, and multi-provider LLM integration (OpenAI, Anthropic, Gemini, Azure via `rig.rs`) are in place.
 - ⚒️ Hardening and DX polish (expanded tests, release documentation) remain open.
-- 🎯 Immediate focus: elevate Phase 7/8 quality tasks and finish the outstanding rig.rs doc/test updates noted in Phase 9.
+- 🎯 Immediate focus: package the next release, groom stretch features, and capture performance benchmarks to inform future iterations.
 
 **Related Documentation:**
 - **[`PRD.md`](./PRD.md)** — Product requirements and technical specifications
@@ -177,8 +177,17 @@ This living document tracks implementation progress for the LLM-Guard project, d
 
 ### Next Steps (Quick Reference)
 
-1. 📦 Run the release checklist and prep the next tagged drop (bump versions, publish notes).
-2. 🛠️ Prioritise stretch items (rule management commands, caching) for the next iteration.
-3. 📊 Capture performance benchmarks and document tuning guidance before wider rollout.
+1. 📦 Prepare the next tagged release  
+   - Run through [`docs/RELEASE_CHECKLIST.md`](./docs/RELEASE_CHECKLIST.md)  
+   - Bump workspace crate versions and refresh `RELEASE_NOTES.md`  
+   - Attach sample scan output (examples/) to the release announcement
+2. 🛠️ Groom the stretch-feature backlog  
+   - Evaluate scope for rule management commands (`list`, `enable/disable`)  
+   - Assess feasibility of verdict caching and tail-mode streaming optimisations  
+   - Capture open questions in ADR templates if architecture changes are needed
+3. 📊 Benchmark & document performance tuning  
+   - Measure scan latency/memory across 10k–100k character prompts  
+   - Record findings in `docs/ARCHITECTURE.md` (Performance section)  
+   - Provide guidance on adjusting `--max-input-bytes`, dampening factors, and LLM retry settings
 
 Keep this list in sync with the checkboxes above as you iterate.
