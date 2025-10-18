@@ -7,6 +7,7 @@ This directory aggregates reference material for contributors and operators.
 - [USAGE.md](./USAGE.md) — CLI flag reference and advanced workflows.
 - [TESTING_GUIDE.md](./TESTING_GUIDE.md) — recommended test commands and coverage tips.
 - [SECURITY.md](./SECURITY.md) — guardrails, assumptions, and disclosure expectations.
+- [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) — tasks to complete before publishing a release.
 - [`ADR/`](./ADR/) — design decisions captured as lightweight ADRs.
 
 See `../PLAN.md` for the current development phase and outstanding documentation tasks.

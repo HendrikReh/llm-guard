@@ -576,6 +576,15 @@ mod tests {
     }
 
     #[test]
+    fn parse_verdict_handles_leading_analysis_text() {
+        let payload = "analysis:\n```json\n{\"label\":\"suspicious\",\"rationale\":\"Potential override\",\"mitigation\":\"Escalate\"}\n```";
+        let verdict =
+            parse_verdict_json(payload, "openai", "test-model").expect("should not error");
+        assert_eq!(verdict.label, "unknown");
+        assert!(verdict.mitigation.contains("Review provider output"));
+    }
+
+    #[test]
     fn sanitize_closes_unterminated_strings() {
         let payload = "{\n  \"mitigation\": \"Line one\nLine two";
         let sanitized = sanitize_json_strings(payload);

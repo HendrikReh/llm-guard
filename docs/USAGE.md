@@ -469,7 +469,7 @@ llm-guard --max-input-bytes 2000000 scan --file large_conversation.txt
 
 2. **Prime the environment:** Profiles are auto-loaded when `--with-llm` is used. CLI flags (`--model`, `--project`, `--endpoint`, `--workspace`) take precedence if supplied.
 
-3. **Run the scan:** `llm-guard scan --file samples/chat.txt --with-llm` will ask the rig-backed provider for a JSON verdict and merge it into the heuristic report.
+3. **Run the scan:** `llm-guard scan --file samples/chat.txt --with-llm` will ask the rig-backed provider for a JSON verdict and merge it into the heuristic report. Use `llm-guard --providers-config llm_providers.yaml health --provider openai --dry-run` to validate your configuration without making a live API call.
 
 4. **Inspect streaming mode:** Combine `--tail` with `--with-llm` to watch long-running logs. The tail loop is fuzz-tested to handle rapid file mutations without panicking.
 

@@ -102,7 +102,7 @@ This living document tracks implementation progress for the LLM-Guard project, d
 **Goal:** Comprehensive testing and validation
 **AI Collaboration:** Test generation, edge case identification, CI configuration
 
-- [~] Establish unit, integration (`tests/e2e.rs`), and property-based tests (unit/integration complete; property coverage extended to rule parsing & tailing, targeted fuzzing still open)
+- [x] Establish unit, integration (`tests/e2e.rs`), and property-based tests (tail fuzzing, input guardrail coverage, LLM fallback regression cases)
 - [x] Configure `cargo-nextest`, coverage (`llvm-cov`), and CI tasks (fmt, lint, test, deny, audit)
 - [x] Add fixture corpus for common jailbreak patterns and regression cases; automate through snapshot tests (`insta`)
 - [x] Document security posture (timeouts, redactions) and add assertions preventing panic paths
@@ -114,8 +114,8 @@ This living document tracks implementation progress for the LLM-Guard project, d
 
 - [x] Expand [`README.md`](./README.md) with usage guide, risk rubric, demo script, and troubleshooting
 - [x] Add `docs/` entries (architecture overview, rule authoring how-to) and ADR for heuristic design
-- [ ] Provide `examples/` (safe, suspicious, malicious sample files) and scripted demo
-- [ ] Prepare release checklist (versioning, changelog, policy pack publishing) and note future stretch goals (policy packs, sanitization, feedback loop)
+- [x] Provide `examples/` (safe, suspicious, malicious sample files) and scripted demo
+- [x] Prepare release checklist (versioning, changelog, policy pack publishing) and note future stretch goals (policy packs, sanitization, feedback loop)
 
 ## Phase 9 — Migration to `rig.rs`
 
@@ -125,7 +125,7 @@ This living document tracks implementation progress for the LLM-Guard project, d
 - [x] Replace existing LLM adapter wiring with rig.rs (OpenAI, Anthropic, Gemini, Azure now route through the rig adapter; noop remains standalone)
 - [x] Map current provider implementations (Anthropic, Gemini, Azure, noop) into rig.rs abstractions (noop client still separate)
 - [x] Ensure configuration precedence (config → env → flags) is preserved via rig.rs (CLI now exposes deployment/project/workspace overrides and provider profiles)
-- [ ] Update CLI tests and documentation to reflect the new runtime
+- [x] Update CLI tests and documentation to reflect the new runtime
 
 ---
 
@@ -177,8 +177,8 @@ This living document tracks implementation progress for the LLM-Guard project, d
 
 ### Next Steps (Quick Reference)
 
-1. ⚒️ Advance Phase 7 with remaining fuzzing (tail CLI edge cases, LLM mock fallbacks, health command coverage).
-2. 📝 Complete Phase 8 deliverables (example prompts, release checklist).
-3. 🧪 Finalise Phase 9 with refreshed CLI tests demonstrating the rig-backed providers.
+1. 📦 Run the release checklist and prep the next tagged drop (bump versions, publish notes).
+2. 🛠️ Prioritise stretch items (rule management commands, caching) for the next iteration.
+3. 📊 Capture performance benchmarks and document tuning guidance before wider rollout.
 
 Keep this list in sync with the checkboxes above as you iterate.

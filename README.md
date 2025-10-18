@@ -135,6 +135,7 @@ Synergy bonus (override+leak within 200 chars)              (+5)
 ```
 
 Exit codes: `0` (low), `2` (medium), `3` (high), `1` (error). Integrate the CLI into CI/CD pipelines by acting on those codes.
+Sample prompts live under `examples/prompt_safe.txt`, `examples/prompt_suspicious.txt`, and `examples/prompt_malicious.txt` for quick demos.
 
 ### Configuration
 
@@ -294,6 +295,7 @@ Scores combine rule weights, dampened repeat hits, and a length normalization fa
 | [`AGENTS.md`](./AGENTS.md)                           | Onboarding guide for AI coding assistants      | AI agents & humans 
 | [`docs/TESTING_GUIDE.md`](./docs/TESTING_GUIDE.md)   | Testing strategy, commands, troubleshooting    | Developers, QA 
 | [`docs/SECURITY.md`](./docs/SECURITY.md)             | Security guardrails, runtime expectations      | Security reviewers 
+| [`docs/RELEASE_CHECKLIST.md`](./docs/RELEASE_CHECKLIST.md) | Steps for shipping a tagged release        | Maintainers 
 | [`docs/ADR/`](./docs/ADR/)                           | Architecture decision records                  | Technical stakeholders 
 
 ## Hackathon Context

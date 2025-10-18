@@ -551,6 +551,29 @@ mod tail_tests {
             .any(|cause| cause.to_string().to_lowercase().contains("utf-8"));
         assert!(has_utf8, "unexpected error chain: {err:#}");
     }
+
+    #[tokio::test]
+    async fn tail_file_respects_custom_limit() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("custom_limit.log");
+        tokio::fs::write(&path, "oversize").await.unwrap();
+
+        let repo = Arc::new(FileRuleRepository::new(workspace_rules_dir()));
+        let scanner = Arc::new(DefaultScanner::new(repo));
+        let err = tail_file(
+            scanner,
+            path.as_path(),
+            false,
+            None,
+            Duration::from_millis(5),
+            Some(1),
+            4,
+        )
+        .await
+        .expect_err("limit smaller than file length should error");
+
+        assert!(err.to_string().contains("exceeds"));
+    }
 }
 
 #[cfg(test)]
@@ -634,6 +657,24 @@ mod input_limit_tests {
         let resolved = resolve_max_input_bytes(&cli).expect("cli override should resolve");
         assert_eq!(resolved, 4096);
         std::env::remove_var("LLM_GUARD_MAX_INPUT_BYTES");
+    }
+
+    #[test]
+    fn resolve_max_input_bytes_invalid_env() {
+        let _guard = INPUT_ENV_LOCK.lock().unwrap();
+        std::env::set_var("LLM_GUARD_MAX_INPUT_BYTES", "not-a-number");
+        let cli = Cli::parse_from(["llm-guard-cli"]);
+        let err = resolve_max_input_bytes(&cli).expect_err("invalid env should error");
+        assert!(err.to_string().contains("positive integer"));
+        std::env::remove_var("LLM_GUARD_MAX_INPUT_BYTES");
+    }
+
+    #[test]
+    fn resolve_max_input_bytes_cli_zero_rejected() {
+        let _guard = INPUT_ENV_LOCK.lock().unwrap();
+        let cli = Cli::parse_from(["llm-guard-cli", "--max-input-bytes", "0"]);
+        let err = resolve_max_input_bytes(&cli).expect_err("zero limit should be rejected");
+        assert!(err.to_string().contains("greater than zero"));
     }
 }
 

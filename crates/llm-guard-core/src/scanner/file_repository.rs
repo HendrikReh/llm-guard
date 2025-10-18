@@ -212,7 +212,9 @@ DATA_EXFIL|30|Tries to exfiltrate secrets|api key
     }
 
     fn text_without_delimiter() -> impl Strategy<Value = String> {
-        proptest::string::string_regex("[A-Za-z0-9 _\\-]{3,48}").unwrap()
+        proptest::string::string_regex("[A-Za-z0-9 _\\-]{3,48}")
+            .unwrap()
+            .prop_filter("pattern must contain non-whitespace", |s| !s.trim().is_empty())
     }
 
     proptest! {
