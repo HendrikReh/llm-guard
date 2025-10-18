@@ -1,268 +1,106 @@
-# Release Notes: LLM-Guard v0.4.1
+# Release Notes: LLM-Guard v0.9.0
 
-> **AI Coding Hackathon Release** — Production-ready prompt injection detection with multi-provider LLM enrichment
+> **Release Focus** — Configurable input guardrail, hardened test coverage, refreshed rig workflows, and release tooling for the next tagged drop.
 
 ---
 
 ## 🎯 Overview
 
-LLM-Guard v0.4.1 is a **fast, explainable Rust CLI** for detecting prompt injection and jailbreak attempts in LLM applications. This release delivers production-grade multi-provider LLM integration, enhanced detection rules, and comprehensive debug capabilities.
+LLM-Guard v0.9.0 elevates the original hackathon prototype into a polished developer tool. Highlights include:
 
-**Developed in ~7 hours** during the [AI Coding Accelerator](https://maven.com/nila/ai-coding-accelerator) hackathon using AI-assisted development (GPT-5 Codex + Claude Code).
+- A **configurable input-size guardrail** applied consistently across stdin, file, and tail mode (default 1 MB, override via `--max-input-bytes` or `LLM_GUARD_MAX_INPUT_BYTES`).
+- **Expanded regression coverage** for tail-mode edge cases, input validation, and rig adapter fallbacks so providers that emit fenced or malformed JSON now fail safely.
+- **Operator assets** such as branded example prompts and a maintainer-oriented `docs/RELEASE_CHECKLIST.md`.
+- Documentation updates aligning with the current workspace (architecture, rule authoring, rig walkthrough) plus refreshed CLI integration tests demonstrating rig-backed providers end-to-end.
 
----
-
-## ✨ Key Features
-
-### Core Capabilities
-- ⚡ **Fast Scanning:** <100ms for typical prompts using Aho-Corasick + compiled regex
-- 📊 **Transparent Risk Scoring:** 0-100 scale with detailed rule attribution and text excerpts
-- 🔌 **Multi-Provider LLM Support:** OpenAI, Anthropic, Google Gemini, Azure OpenAI via `rig.rs`
-- 🏥 **Provider Health Checks:** Built-in diagnostics for validating connectivity and configuration
-- 📁 **Flexible Input Sources:** Files, stdin, streaming logs (tail mode)
-- 📤 **Multiple Output Formats:** Human-readable CLI or JSON for CI/CD automation
-- 🚦 **Exit Code Integration:** 0=low, 2=medium, 3=high, 1=error
-
-### Detection Coverage
-- **Instruction Override:** `INSTR_IGNORE`, `INSTR_OVERRIDE` patterns
-- **Data Exfiltration:** `PROMPT_LEAK` detection with flexible regex
-- **Policy Subversion:** `MODEL_OVERRIDE` jailbreak patterns
-- **Obfuscation Techniques:** `CODE_INJECTION` payload recognition
+🎬 **Human roles:** architect, tester, and product manager partnered with GPT-5 Codex and Claude Code throughout this release.
 
 ---
 
-## 🐛 Critical Fixes
+## ✨ What’s New
 
-### Gemini Provider Integration
-**Problem:** Rig.rs deserialization errors (`missing field generationConfig`) and API rejection of function calling with JSON MIME type
-**Solution:** Bypassed rig entirely; implemented standalone HTTP client using Gemini's native REST API
-**Impact:** Gemini now fully functional with `generationConfig.responseMimeType: "application/json"`
+### Guardrail & CLI Enhancements
+- `--max-input-bytes` CLI flag and `LLM_GUARD_MAX_INPUT_BYTES` env var expose the input-size limit (default 1 MB).
+- Tail mode streams through the same chunked UTF-8 reader, failing fast when the limit is exceeded and preserving snapshot integrity.
+- All health checks can now run in dry-run mode; OpenAI profiles are validated without live API calls (ignored on macOS sandbox due to SystemConfiguration limits).
 
-### OpenAI GPT-5 Reasoning Models
-**Problem:** Models returned only reasoning traces (no textual content) with `json_schema` response format
-**Solution:** Switched from strict `json_schema` to flexible `json_object` format
-**Impact:** Full compatibility with GPT-5 reasoning models; cleaner codebase
+### Test Hardenings
+- Added property/fuzz tests for tail behaviour, custom limits, and env/CLI precedence.
+- Rig adapter regression tests cover fenced JSON payloads and ensure “unknown” fallbacks are emitted instead of panics.
+- Keyword rule generation now filters out whitespace-only patterns, preventing spurious validation failures.
 
-### Detection Rules Gap
-**Problem:** Keyword "ignore previous instructions" missed variations like "ignore **your** previous instructions"
-**Solution:** Added flexible regex patterns `INSTR_IGNORE` and `PROMPT_LEAK` to `rules/patterns.json`
-**Impact:** Scanner now catches attack variations; heuristic and LLM verdicts align
+### Documentation & DX
+- `docs/ARCHITECTURE.md` and `docs/RULE_AUTHORING.md` describe the workspace layout and rule pack conventions.
+- `docs/RELEASE_CHECKLIST.md` codifies release prep (fmt/clippy/test, docs, tagging, announcements).
+- `README.md` usage section reflects the guardrail flag, links to example prompts (`examples/prompt_safe.txt`, `prompt_suspicious.txt`, `prompt_malicious.txt`), and credits the human team roles.
+- `docs/USAGE.md` now documents the new flag/env var and showcases rig-backed workflows with health checks.
 
-**Example:**
-```
-Before: Risk Score: 0.0 (Low), No findings
-After:  Risk Score: 37.5 (Medium)
-        Findings: PROMPT_LEAK [40.0], INSTR_IGNORE [35.0]
-```
-
-### Debug Logging Enhancement
-**Problem:** `--debug` flag only logged errors, not all raw LLM responses
-**Solution:** Added universal debug logging for all providers (raw response + extracted content)
-**Impact:** Easier diagnosis of parsing issues and provider behavior quirks
+### Planning Updates
+- `PLAN.md` marks Phase 7–9 deliverables complete and defines the next steps: run the release checklist, groom stretch features (rule management, caching), and capture performance benchmarks.
 
 ---
 
-## 📦 What's Included
+## 🚀 Quick Start (unchanged)
 
-### Binaries
-```bash
-# Build from source
-cargo build --release
-./target/release/llm-guard --version  # v0.4.1
-```
-
-### Configuration Files
-- `llm_providers.example.yaml` — Multi-provider config template
-- `rules/keywords.txt` — Exact-match keyword database
-- `rules/patterns.json` — Regex patterns for flexible detection
-
-### Documentation
-- `README.md` — Complete project overview with hackathon context
-- `docs/USAGE.md` — Comprehensive CLI reference
-- `docs/TESTING_GUIDE.md` — Testing protocols and provider health checks
-- `AGENTS.md` — AI assistant onboarding guide
-- `PLAN.md` — Implementation roadmap and phase tracking
-- `PROJECT_SUMMARY.md` — Current state snapshot
-
----
-
-## 🚀 Quick Start
-
-### Installation
 ```bash
 git clone https://github.com/HendrikReh/llm-guard
 cd llm-guard
 cargo build --release
+
+# Scan with optional guardrail override
+./target/release/llm-guard-cli --max-input-bytes 2000000 scan --file examples/prompt_safe.txt
+
+# Rig-backed scan with health pre-flight
+./target/release/llm-guard-cli --providers-config llm_providers.yaml health --provider openai --dry-run
+./target/release/llm-guard-cli scan --file examples/prompt_suspicious.txt --with-llm --provider openai
 ```
-
-### Basic Usage
-```bash
-# Scan a file
-./target/release/llm-guard scan --file examples/chat.txt
-
-# LLM-enhanced scan with Gemini
-export LLM_GUARD_PROVIDER=gemini
-export LLM_GUARD_API_KEY=your_key_here
-./target/release/llm-guard scan --file examples/chat.txt --with-llm
-
-# Debug mode (dump raw responses)
-./target/release/llm-guard scan --file examples/chat.txt --with-llm --debug
-
-# Provider health check
-./target/release/llm-guard health --providers-config llm_providers.yaml
-```
-
-### CI/CD Integration
-```bash
-# Generate JSON output
-./target/release/llm-guard scan --file input.txt --json > report.json
-
-# Exit codes: 0=low, 2=medium, 3=high, 1=error
-if [ $? -ge 2 ]; then
-  echo "Security risk detected!"
-  exit 1
-fi
-```
-
----
-
-## 🔧 Configuration
-
-### Environment Variables
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LLM_GUARD_PROVIDER` | Provider (`openai`, `anthropic`, `gemini`, `azure`) | `openai` |
-| `LLM_GUARD_API_KEY` | API key/token | - |
-| `LLM_GUARD_MODEL` | Model name (e.g., `gpt-4o-mini`) | Provider default |
-| `LLM_GUARD_ENDPOINT` | Custom endpoint URL | Provider default |
-| `LLM_GUARD_TIMEOUT_SECS` | HTTP timeout in seconds | `30` |
-| `LLM_GUARD_MAX_RETRIES` | Retry count for failed calls | `2` |
-
-### Provider Profiles (`llm_providers.yaml`)
-```yaml
-providers:
-  - name: "openai"
-    api_key: "OPENAI_API_KEY"
-    model: "gpt-4o-mini"
-  - name: "gemini"
-    api_key: "GEMINI_API_KEY"
-    model: "gemini-1.5-flash"
-  - name: "azure"
-    api_key: "AZURE_OPENAI_KEY"
-    endpoint: "https://your-resource.openai.azure.com"
-    deployment: "gpt-4o-production"
-    api_version: "2024-02-15-preview"
-```
-
-**Configuration Precedence:** CLI flags → Environment variables → Provider profile
-
----
-
-## 📊 Technical Metrics
-
-| Metric | Value |
-|--------|-------|
-| **Lines of Code** | ~4,000 (Rust) |
-| **Source Files** | 25 `.rs` files |
-| **Test Coverage** | 44 tests (34 passing, 10 ignored) |
-| **Dependencies** | Production-grade (tokio, reqwest, rig, clap) |
-| **Detection Rules** | 4 patterns + keyword database |
-| **Supported Providers** | 4 (OpenAI, Anthropic, Gemini, Azure) |
-| **Performance** | <100ms for typical prompts |
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-# Run all tests
+cargo fmt
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test
-
-# Run library tests only
-cargo test --lib
-
-# Run with ignored tests (requires network)
+# Include ignored provider tests when network access is available:
 cargo test -- --include-ignored
-
-# Provider health checks
-cargo run --bin llm-guard-cli -- health --providers-config llm_providers.yaml
 ```
 
-See [`docs/TESTING_GUIDE.md`](./docs/TESTING_GUIDE.md) for comprehensive testing protocols.
+Tail fuzzer tests now run as part of the default suite; rig-related tests that require network/TLS remain ignored.
 
 ---
 
-## 🤖 AI-Assisted Development
+## 📚 Documentation Snapshot
 
-This release demonstrates the capabilities of **AI-assisted software development**:
-
-**Workflow:**
-- **Primary Agent:** GPT-5 Codex (core logic, LLM adapters, CLI)
-- **Review Agent:** Claude Code (code reviews, documentation, debugging)
-- **Context Management:** RepoPrompt + Context7 MCP servers
-
-**What Worked:**
-- ✅ Functional CLI with 4 LLM providers in <7 hours
-- ✅ Multi-agent collaboration (coding vs. review separation)
-- ✅ MCP integration eliminated manual file navigation
-- ✅ PRD-driven development prevented scope creep
-
-**Challenges:**
-- ⚠️ Provider API quirks (Gemini, OpenAI reasoning models)
-- ⚠️ Testing gaps due to time pressure (10 ignored tests)
-- ⚠️ Rig.rs limitations required Gemini bypass
+| Document | Purpose |
+|----------|---------|
+| [`README.md`](./README.md) | Project overview, quick start, AI workflow insights |
+| [`docs/USAGE.md`](./docs/USAGE.md) | CLI reference, global flags, advanced scenarios |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | End-to-end data flow and component responsibilities |
+| [`docs/RULE_AUTHORING.md`](./docs/RULE_AUTHORING.md) | Extending keyword/regex packs safely |
+| [`docs/RELEASE_CHECKLIST.md`](./docs/RELEASE_CHECKLIST.md) | Maintainer tasks before tagging a release |
+| [`docs/TESTING_GUIDE.md`](./docs/TESTING_GUIDE.md) | Testing strategy, provider diagnostics |
+| [`docs/SECURITY.md`](./docs/SECURITY.md) | Guardrails and data-handling assumptions |
 
 ---
 
-## 🔮 Known Limitations
+## 📦 Packaging Checklist (Summary)
 
-- **Rule Coverage:** Only 4 detection patterns (expandable via `rules/patterns.json`)
-- **Context Windows:** Limited to 200-char proximity for synergy bonuses
-- **Test Coverage:** 10 tests ignored (require network or specific environments)
-- **Production Readiness:** Prototype for research/education; not audited for production security workloads
-
----
-
-## 📚 Resources
-
-- **Main Documentation:** [README.md](./README.md)
-- **Usage Reference:** [docs/USAGE.md](./docs/USAGE.md)
-- **Testing Guide:** [docs/TESTING_GUIDE.md](./docs/TESTING_GUIDE.md)
-- **Implementation Plan:** [PLAN.md](./PLAN.md)
-- **AI Onboarding:** [AGENTS.md](./AGENTS.md)
-- **Project Summary:** [PROJECT_SUMMARY.md](./PROJECT_SUMMARY.md)
+1. Run through `docs/RELEASE_CHECKLIST.md` (fmt/clippy/test, docs, version bumps).
+2. Tag `v0.9.0`, push tags, and draft a release with binaries + changelog.
+3. Share release summary with stakeholders (Slack/Discord/mailing list).
 
 ---
 
-## 🙏 Acknowledgments
+## 🔭 Next Steps
 
-**Hackathon:** [AI Coding Accelerator](https://maven.com/nila/ai-coding-accelerator) (Maven)
-**Instructors:** [Vignesh Mohankumar](https://x.com/vig_xyz), [Jason Liu](https://x.com/jxnlco)
-
-**Built with:**
-- [Cursor](https://cursor.sh) + GPT-5 Codex
-- [Claude Code](https://claude.ai)
-- [RepoPrompt MCP](https://repoprompt.com/)
-- [Context7 MCP](https://context7.com/)
+- Package the next tagged release using the new checklist.
+- Groom stretch features: rule management commands, verdict caching, tail streaming optimisations.
+- Capture performance benchmarks (latency, memory) across large prompts and document tuning guidance in `docs/ARCHITECTURE.md`.
 
 ---
 
-## 📄 License
+## 📜 Historical Note — v0.4.1
 
-Apache-2.0 OR MIT
-
-**Security Disclaimer:** This tool is a prototype for research/education. Use at your own risk.
-
-**AI Development Notice:** Codebase primarily generated via AI assistants (GPT-5 Codex, Claude Code) with human oversight for architecture, testing, and quality validation.
-
----
-
-## 🔗 Links
-
-- **Repository:** https://github.com/HendrikReh/llm-guard
-- **Issues:** https://github.com/HendrikReh/llm-guard/issues
-- **Releases:** https://github.com/HendrikReh/llm-guard/releases
-
----
-
-**Full Changelog:** https://github.com/HendrikReh/llm-guard/compare/v0.4.0...v0.4.1
+The original hackathon release laid the foundation for LLM-Guard with multi-provider rig integration and core detection heuristics. Refer to the Git tag `v0.4.1` (or the GitHub Releases page) for the full historical changelog.
