@@ -17,7 +17,7 @@ use llm_guard_core::{
 use serde::Deserialize;
 use tokio::{
     fs,
-    io::{self, AsyncReadExt},
+    io::{self, AsyncRead, AsyncReadExt},
     signal,
     time::sleep,
 };
@@ -157,6 +157,9 @@ struct ProviderProfile {
 struct ProviderProfiles {
     entries: HashMap<String, ProviderProfile>,
 }
+
+/// Maximum allowed input size in bytes (~1 MiB) for scan operations.
+const MAX_INPUT_BYTES: usize = 1_000_000;
 
 impl ProviderProfiles {
     fn load(path: &Path) -> Result<Self> {
@@ -491,6 +494,106 @@ mod tail_tests {
             result.unwrap();
         }
     }
+
+    #[tokio::test]
+    async fn tail_file_errors_on_large_input() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("oversized.log");
+        let oversized = "x".repeat(MAX_INPUT_BYTES + 1);
+        tokio::fs::write(&path, oversized).await.unwrap();
+
+        let repo = Arc::new(FileRuleRepository::new(workspace_rules_dir()));
+        let scanner = Arc::new(DefaultScanner::new(repo));
+        let err = tail_file(
+            scanner,
+            path.as_path(),
+            false,
+            None,
+            Duration::from_millis(5),
+            Some(1),
+        )
+        .await
+        .expect_err("tailing oversized file should return an error");
+
+        assert!(err.to_string().contains("exceeds"));
+    }
+
+    #[tokio::test]
+    async fn tail_file_errors_on_invalid_utf8() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("invalid.log");
+        let bytes = vec![0xff, 0xfe, 0xfd];
+        tokio::fs::write(&path, &bytes).await.unwrap();
+
+        let repo = Arc::new(FileRuleRepository::new(workspace_rules_dir()));
+        let scanner = Arc::new(DefaultScanner::new(repo));
+        let err = tail_file(
+            scanner,
+            path.as_path(),
+            false,
+            None,
+            Duration::from_millis(5),
+            Some(1),
+        )
+        .await
+        .expect_err("invalid UTF-8 should bubble up from tailer");
+
+        let has_utf8 = err
+            .chain()
+            .any(|cause| cause.to_string().to_lowercase().contains("utf-8"));
+        assert!(has_utf8, "unexpected error chain: {err:#}");
+    }
+}
+
+#[cfg(test)]
+mod input_limit_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn read_input_rejects_large_file() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("too_large.txt");
+        let oversized = vec![b'a'; MAX_INPUT_BYTES + 1];
+        fs::write(&path, &oversized).await.unwrap();
+
+        let err = read_input(Some(path.as_path()))
+            .await
+            .expect_err("oversized file should return an error");
+
+        assert!(err.to_string().contains("exceeds"));
+    }
+
+    #[tokio::test]
+    async fn read_input_accepts_file_at_limit() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("limit.txt");
+        let exact = vec![b'b'; MAX_INPUT_BYTES];
+        fs::write(&path, &exact).await.unwrap();
+
+        let text = read_input(Some(path.as_path()))
+            .await
+            .expect("file at size limit should be accepted");
+
+        assert_eq!(text.len(), MAX_INPUT_BYTES);
+    }
+
+    #[tokio::test]
+    async fn read_input_rejects_invalid_utf8() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("invalid.bin");
+        let bytes = vec![0xff, 0xfe, 0xfd];
+        fs::write(&path, &bytes).await.unwrap();
+
+        let err = read_input(Some(path.as_path()))
+            .await
+            .expect_err("invalid UTF-8 input should not be accepted");
+
+        let has_utf8 = err
+            .chain()
+            .any(|cause| cause.to_string().to_lowercase().contains("utf-8"));
+        assert!(has_utf8, "unexpected error chain: {err:#}");
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -608,6 +711,34 @@ fn maybe_set_env(var: &str, value: Option<String>) {
     if let Some(value) = value {
         std::env::set_var(var, value);
     }
+}
+
+async fn read_stream_with_limit<R>(reader: &mut R, max_bytes: usize) -> Result<String>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut buffer = Vec::new();
+    let mut chunk = [0u8; 8 * 1024];
+
+    loop {
+        let read = reader.read(&mut chunk).await?;
+        if read == 0 {
+            break;
+        }
+
+        let projected = buffer.len() + read;
+        if projected > max_bytes {
+            bail!(
+                "input exceeds {} bytes ({} bytes read)",
+                max_bytes,
+                projected
+            );
+        }
+
+        buffer.extend_from_slice(&chunk[..read]);
+    }
+
+    String::from_utf8(buffer).context("input contains invalid UTF-8")
 }
 
 async fn list_rules(rules_dir: &Path, json: bool) -> Result<()> {
@@ -775,17 +906,28 @@ async fn scan_input(
 
 async fn read_input(path: Option<&Path>) -> Result<String> {
     if let Some(path) = path {
-        Ok(fs::read_to_string(path)
+        let metadata = fs::metadata(path)
             .await
-            .with_context(|| format!("failed to read input file {}", path.display()))?)
+            .with_context(|| format!("failed to stat input file {}", path.display()))?;
+        if metadata.len() > MAX_INPUT_BYTES as u64 {
+            bail!(
+                "input file {} exceeds {} bytes ({} bytes on disk)",
+                path.display(),
+                MAX_INPUT_BYTES,
+                metadata.len()
+            );
+        }
+        let mut file = fs::File::open(path)
+            .await
+            .with_context(|| format!("failed to open input file {}", path.display()))?;
+        read_stream_with_limit(&mut file, MAX_INPUT_BYTES)
+            .await
+            .with_context(|| format!("failed to read input file {}", path.display()))
     } else {
-        let mut buf = String::new();
         let mut stdin = io::stdin();
-        stdin
-            .read_to_string(&mut buf)
+        read_stream_with_limit(&mut stdin, MAX_INPUT_BYTES)
             .await
-            .context("failed to read from stdin")?;
-        Ok(buf)
+            .context("failed to read from stdin")
     }
 }
 
@@ -801,11 +943,27 @@ async fn tail_file(
     let mut last_code = 0;
     let mut remaining = max_iterations;
     loop {
-        let contents = fs::read_to_string(path)
+        let metadata = fs::metadata(path)
+            .await
+            .with_context(|| format!("failed to stat tailed file {}", path.display()))?;
+        if metadata.len() > MAX_INPUT_BYTES as u64 {
+            bail!(
+                "tailed file {} exceeds {} bytes ({} bytes on disk)",
+                path.display(),
+                MAX_INPUT_BYTES,
+                metadata.len()
+            );
+        }
+
+        let mut file = fs::File::open(path)
+            .await
+            .with_context(|| format!("failed to open tailed file {}", path.display()))?;
+        let contents = read_stream_with_limit(&mut file, MAX_INPUT_BYTES)
             .await
             .with_context(|| format!("failed to read tailed file {}", path.display()))?;
         if contents != last_snapshot {
-            last_snapshot = contents.clone();
+            last_snapshot.clear();
+            last_snapshot.push_str(&contents);
             let mut report = scanner.scan(&contents).await?;
             if let Some(client) = llm_client.as_ref() {
                 let verdict = client.enrich(&contents, &report).await?;
