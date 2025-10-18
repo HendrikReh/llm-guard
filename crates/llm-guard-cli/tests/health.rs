@@ -4,7 +4,6 @@ use predicates::str::contains;
 use std::env;
 use std::fs::write;
 use std::sync::Mutex;
-use tempfile;
 
 static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 

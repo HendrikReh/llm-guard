@@ -264,13 +264,13 @@ mod tests {
                     let trimmed = ep.trim();
                     if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
                 });
-                prop_assert_eq!(settings.endpoint.as_ref().map(|s| s.as_str()), expected_endpoint.as_deref());
+                prop_assert_eq!(settings.endpoint.as_deref(), expected_endpoint.as_deref());
 
                 let expected_model = model.and_then(|m| {
                     let trimmed = m.trim();
                     if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
                 });
-                prop_assert_eq!(settings.model.as_ref().map(|s| s.as_str()), expected_model.as_deref());
+                prop_assert_eq!(settings.model.as_deref(), expected_model.as_deref());
                 match timeout {
                     Some(t) => prop_assert_eq!(settings.timeout_secs, Some(t)),
                     None => prop_assert!(settings.timeout_secs.is_none()),
