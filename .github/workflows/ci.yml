@@ -46,7 +46,7 @@ jobs:
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run nextest
-        run: cargo nextest run --workspace --all-features --profile ci --failure-output=final
+        run: cargo nextest run --config-file nextest.toml --profile ci
 
   fmt:
     name: Format
