@@ -1,3 +1,2 @@
 [profile.ci]
-retries = { attempts = 0 }
 fail-fast = false
