@@ -1,5 +1,6 @@
 # LLM-Guard — Prompt Injection Firewall (PoC)
 
+[![CI](https://github.com/HendrikReh/llm-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/HendrikReh/llm-guard/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/HendrikReh/llm-guard/pulls)
