@@ -1,4 +1,4 @@
-# LLM-Guard — Prompt Injection Firewall
+# LLM-Guard — Prompt Injection Firewall (PoC)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
@@ -29,6 +29,7 @@
   - [Quality Checks](#quality-checks)
   - [Usage Examples](#usage-examples)
   - [Configuration](#configuration)
+  - [Troubleshooting](#troubleshooting)
 - [Features](#features)
   - [Core Capabilities](#core-capabilities)
   - [Detection Coverage](#detection-coverage)
@@ -112,9 +113,14 @@ LLM_GUARD_MODEL=gpt-4o-mini \
 # Tail a log file and scan new content as it arrives
 ./target/debug/llm-guard-cli scan --file logs/chat.log --tail
 
+# Increase the input budget to 2 MB for large transcripts
+./target/debug/llm-guard-cli --max-input-bytes 2000000 scan --file transcripts/long.txt
+
 # Run health diagnostics for a specific provider
 ./target/debug/llm-guard-cli --debug health --provider openai
 ```
+
+> **Input size:** `llm-guard-cli` enforces a 1 MB (1,000,000 byte) cap per input. Tail mode and stdin use the same guard to avoid runaway memory usage. Override it with `--max-input-bytes` or `LLM_GUARD_MAX_INPUT_BYTES` when you deliberately need to scan larger corpora.
 
 **Sample output:**
 
@@ -146,6 +152,7 @@ Environment variables provide the quickest way to configure LLM access:
 | `LLM_GUARD_TIMEOUT_SECS` | HTTP timeout in seconds | `30` |
 | `LLM_GUARD_MAX_RETRIES` | Retry attempts for failed calls | `2` |
 | `LLM_GUARD_API_VERSION` | API version (Azure OpenAI) | Provider default |
+| `LLM_GUARD_MAX_INPUT_BYTES` | Max bytes accepted from stdin/files | `1_000_000` |
 
 Configuration precedence: CLI flags → environment variables → profile in `llm_providers.yaml`.
 
@@ -186,6 +193,13 @@ max_retries = 3
 ```bash
 cargo run -p llm-guard-cli -- --config llm-config.toml scan --with-llm --file prompt.txt
 ```
+
+### Troubleshooting
+
+- **`input exceeds 1000000 bytes`** — The scanner rejects inputs larger than 1 MB. Remove unnecessary context, chunk long transcripts, tail a filtered log, or raise the cap with `--max-input-bytes`.
+- **`input contains invalid UTF-8`** — Inputs must be UTF-8. Re-encode your file (`iconv -f utf-16 -t utf-8 ...`) or ensure pipelines emit UTF-8 text.
+- **Tail mode shows no updates** — The watcher only prints when file content changes. Confirm your log writer writes the entire file each update or adjust intervals via `--tail` plus periodic `sleep`.
+- **LLM verdict is `unknown`** — Providers may return blank or malformed payloads; the CLI falls back to an informative placeholder. Re-run with `--debug` to inspect raw responses.
 
 ## Features
 
@@ -244,6 +258,8 @@ llm-guard/
 | 25–59 | Medium | Review – investigate before executing user instructions |
 | 60–100| High   | Block – re-prompt or escalate for manual review |
 
+Scores combine rule weights, dampened repeat hits, and a length normalization factor clamped to `[0.5, 1.5]`. The qualitative band drives exit codes (`0`, `2`, `3`) so you can fail CI jobs or gate automations based on the rubric.
+
 ### Core Dependencies
 
 - `aho-corasick`, `regex` — high-performance pattern matching
@@ -267,16 +283,18 @@ llm-guard/
 
 ## Project Documentation
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| [`README.md`](./README.md) | Project overview, quick start, AI insights | Everyone |
-| [`docs/USAGE.md`](./docs/USAGE.md) | CLI reference and advanced command examples | Operators |
-| [`PRD.md`](./PRD.md) | Product requirements and success criteria | Builders & reviewers |
-| [`PLAN.md`](./PLAN.md) | Phase tracking, outstanding work, status notes | Contributors |
-| [`AGENTS.md`](./AGENTS.md) | Onboarding guide for AI coding assistants | AI agents & humans |
-| [`docs/TESTING_GUIDE.md`](./docs/TESTING_GUIDE.md) | Testing strategy, commands, troubleshooting | Developers, QA |
-| [`docs/SECURITY.md`](./docs/SECURITY.md) | Security guardrails, runtime expectations | Security reviewers |
-| [`docs/ADR/`](./docs/ADR/) | Architecture decision records | Technical stakeholders |
+| Document                                             | Purpose                                        | Audience 
+|------------------------------------------------------|------------------------------------------------|--------------------------
+| [`README.md`](./README.md)                           | Project overview, quick start, AI insights     | Everyone 
+| [`docs/USAGE.md`](./docs/USAGE.md)                   | CLI reference and advanced command examples    | Operators 
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)     | Component and data-flow overview               | Contributors 
+| [`docs/RULE_AUTHORING.md`](./docs/RULE_AUTHORING.md) | How to extend keyword & regex rule packs       | Security engineers 
+| [`PRD.md`](./PRD.md)                                 | Product requirements and success criteria      | Builders & reviewers 
+| [`PLAN.md`](./PLAN.md)                               | Phase tracking, outstanding work, status notes | Contributors 
+| [`AGENTS.md`](./AGENTS.md)                           | Onboarding guide for AI coding assistants      | AI agents & humans 
+| [`docs/TESTING_GUIDE.md`](./docs/TESTING_GUIDE.md)   | Testing strategy, commands, troubleshooting    | Developers, QA 
+| [`docs/SECURITY.md`](./docs/SECURITY.md)             | Security guardrails, runtime expectations      | Security reviewers 
+| [`docs/ADR/`](./docs/ADR/)                           | Architecture decision records                  | Technical stakeholders 
 
 ## Hackathon Context
 
@@ -350,7 +368,7 @@ MIT License — see [`LICENSE`](./LICENSE) for full text.
 
 ### AI Development Notice
 
-🤖 This codebase was built with significant AI assistance.
+⚠️ This codebase was built with significant AI assistance.
 
 - GPT-5 Codex (via Codex CLI) generated most code.
 - Claude Code contributed reviews, docs, and feasibility checks.

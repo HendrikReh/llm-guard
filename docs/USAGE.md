@@ -34,6 +34,7 @@ Global flags apply to all commands and must be specified **before** the subcomma
 | `--rules-dir <DIR>` | Directory containing rule packs (`keywords.txt`, `patterns.json`) | `./rules` |
 | `--config <FILE>` | Application config file (TOML/YAML/JSON) | _none_ |
 | `--providers-config <FILE>` | YAML file with per-provider credentials and settings | `llm_providers.yaml` |
+| `--max-input-bytes <BYTES>` | Maximum bytes read from stdin/files before rejecting input | `1_000_000` |
 | `--debug` | Enable verbose diagnostics; logs raw provider payloads on parse errors | `false` |
 | `--help`, `-h` | Display help text | - |
 | `--version`, `-V` | Print CLI version | - |
@@ -270,6 +271,7 @@ All LLM settings can be configured via environment variables:
 | `LLM_GUARD_TIMEOUT_SECS` | HTTP timeout | `30` |
 | `LLM_GUARD_MAX_RETRIES` | Retry count | `2` |
 | `LLM_GUARD_API_VERSION` | API version (Azure) | `2024-02-15-preview` |
+| `LLM_GUARD_MAX_INPUT_BYTES` | Maximum bytes accepted from stdin/files | `1000000` |
 | `LLM_GUARD_DEBUG` | Enable debug logging | `1` |
 
 **Example:**
@@ -445,6 +447,9 @@ fi
 # Streaming log analysis with LLM
 llm-guard scan --file /var/log/chatbot.log --tail --with-llm --json | \
   jq 'select(.risk_score > 50)'
+
+# Raise input budget to 2 MB for large transcripts
+llm-guard --max-input-bytes 2000000 scan --file large_conversation.txt
 ```
 
 ---

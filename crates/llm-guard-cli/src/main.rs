@@ -53,6 +53,10 @@ struct Cli {
     )]
     providers_config: PathBuf,
 
+    /// Maximum number of bytes accepted from stdin/file inputs (defaults to 1_000_000).
+    #[arg(long, value_name = "BYTES", global = true)]
+    max_input_bytes: Option<usize>,
+
     /// Enable verbose diagnostics (including raw provider payloads on errors).
     #[arg(long, global = true)]
     debug: bool,
@@ -128,6 +132,7 @@ struct ScanInputOptions<'a> {
     tail: bool,
     with_llm: bool,
     overrides: ScanOverrides<'a>,
+    max_input_bytes: usize,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -158,8 +163,8 @@ struct ProviderProfiles {
     entries: HashMap<String, ProviderProfile>,
 }
 
-/// Maximum allowed input size in bytes (~1 MiB) for scan operations.
-const MAX_INPUT_BYTES: usize = 1_000_000;
+/// Default maximum input size in bytes (~1 MiB) for scan operations.
+const DEFAULT_MAX_INPUT_BYTES: usize = 1_000_000;
 
 impl ProviderProfiles {
     fn load(path: &Path) -> Result<Self> {
@@ -470,6 +475,7 @@ mod tail_tests {
                         None,
                         Duration::from_millis(5),
                         Some(rest_len + 2),
+                        DEFAULT_MAX_INPUT_BYTES,
                     )
                     .await
                 });
@@ -499,7 +505,7 @@ mod tail_tests {
     async fn tail_file_errors_on_large_input() {
         let temp = tempdir().unwrap();
         let path = temp.path().join("oversized.log");
-        let oversized = "x".repeat(MAX_INPUT_BYTES + 1);
+        let oversized = "x".repeat(DEFAULT_MAX_INPUT_BYTES + 1);
         tokio::fs::write(&path, oversized).await.unwrap();
 
         let repo = Arc::new(FileRuleRepository::new(workspace_rules_dir()));
@@ -511,6 +517,7 @@ mod tail_tests {
             None,
             Duration::from_millis(5),
             Some(1),
+            DEFAULT_MAX_INPUT_BYTES,
         )
         .await
         .expect_err("tailing oversized file should return an error");
@@ -534,6 +541,7 @@ mod tail_tests {
             None,
             Duration::from_millis(5),
             Some(1),
+            DEFAULT_MAX_INPUT_BYTES,
         )
         .await
         .expect_err("invalid UTF-8 should bubble up from tailer");
@@ -548,16 +556,20 @@ mod tail_tests {
 #[cfg(test)]
 mod input_limit_tests {
     use super::*;
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static INPUT_ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     #[tokio::test]
     async fn read_input_rejects_large_file() {
         let temp = tempdir().unwrap();
         let path = temp.path().join("too_large.txt");
-        let oversized = vec![b'a'; MAX_INPUT_BYTES + 1];
+        let oversized = vec![b'a'; DEFAULT_MAX_INPUT_BYTES + 1];
         fs::write(&path, &oversized).await.unwrap();
 
-        let err = read_input(Some(path.as_path()))
+        let err = read_input(Some(path.as_path()), DEFAULT_MAX_INPUT_BYTES)
             .await
             .expect_err("oversized file should return an error");
 
@@ -568,14 +580,14 @@ mod input_limit_tests {
     async fn read_input_accepts_file_at_limit() {
         let temp = tempdir().unwrap();
         let path = temp.path().join("limit.txt");
-        let exact = vec![b'b'; MAX_INPUT_BYTES];
+        let exact = vec![b'b'; DEFAULT_MAX_INPUT_BYTES];
         fs::write(&path, &exact).await.unwrap();
 
-        let text = read_input(Some(path.as_path()))
+        let text = read_input(Some(path.as_path()), DEFAULT_MAX_INPUT_BYTES)
             .await
             .expect("file at size limit should be accepted");
 
-        assert_eq!(text.len(), MAX_INPUT_BYTES);
+        assert_eq!(text.len(), DEFAULT_MAX_INPUT_BYTES);
     }
 
     #[tokio::test]
@@ -585,7 +597,7 @@ mod input_limit_tests {
         let bytes = vec![0xff, 0xfe, 0xfd];
         fs::write(&path, &bytes).await.unwrap();
 
-        let err = read_input(Some(path.as_path()))
+        let err = read_input(Some(path.as_path()), DEFAULT_MAX_INPUT_BYTES)
             .await
             .expect_err("invalid UTF-8 input should not be accepted");
 
@@ -593,6 +605,35 @@ mod input_limit_tests {
             .chain()
             .any(|cause| cause.to_string().to_lowercase().contains("utf-8"));
         assert!(has_utf8, "unexpected error chain: {err:#}");
+    }
+
+    #[test]
+    fn resolve_max_input_bytes_defaults() {
+        let _guard = INPUT_ENV_LOCK.lock().unwrap();
+        std::env::remove_var("LLM_GUARD_MAX_INPUT_BYTES");
+        let cli = Cli::parse_from(["llm-guard-cli"]);
+        let resolved = resolve_max_input_bytes(&cli).expect("default should resolve");
+        assert_eq!(resolved, DEFAULT_MAX_INPUT_BYTES);
+    }
+
+    #[test]
+    fn resolve_max_input_bytes_env_override() {
+        let _guard = INPUT_ENV_LOCK.lock().unwrap();
+        std::env::set_var("LLM_GUARD_MAX_INPUT_BYTES", "2048");
+        let cli = Cli::parse_from(["llm-guard-cli"]);
+        let resolved = resolve_max_input_bytes(&cli).expect("env override should resolve");
+        assert_eq!(resolved, 2048);
+        std::env::remove_var("LLM_GUARD_MAX_INPUT_BYTES");
+    }
+
+    #[test]
+    fn resolve_max_input_bytes_cli_precedence() {
+        let _guard = INPUT_ENV_LOCK.lock().unwrap();
+        std::env::set_var("LLM_GUARD_MAX_INPUT_BYTES", "2048");
+        let cli = Cli::parse_from(["llm-guard-cli", "--max-input-bytes", "4096"]);
+        let resolved = resolve_max_input_bytes(&cli).expect("cli override should resolve");
+        assert_eq!(resolved, 4096);
+        std::env::remove_var("LLM_GUARD_MAX_INPUT_BYTES");
     }
 }
 
@@ -616,6 +657,7 @@ async fn run() -> Result<i32> {
         env::remove_var("LLM_GUARD_DEBUG");
     }
     let provider_profiles = ProviderProfiles::load(&cli.providers_config)?;
+    let max_input_bytes = resolve_max_input_bytes(&cli)?;
     match cli.command.unwrap_or(Commands::ListRules { json: false }) {
         Commands::ListRules { json } => {
             list_rules(&cli.rules_dir, json).await?;
@@ -649,6 +691,7 @@ async fn run() -> Result<i32> {
                         project: project.as_deref(),
                         workspace: workspace.as_deref(),
                     },
+                    max_input_bytes,
                 },
                 &provider_profiles,
             )
@@ -700,6 +743,10 @@ fn apply_config_overrides(config_path: Option<&PathBuf>) -> Result<()> {
         "LLM_GUARD_WORKSPACE",
         settings.get_string("llm.workspace").ok(),
     );
+    maybe_set_env(
+        "LLM_GUARD_MAX_INPUT_BYTES",
+        settings.get_string("scanner.max_input_bytes").ok(),
+    );
 
     Ok(())
 }
@@ -711,6 +758,28 @@ fn maybe_set_env(var: &str, value: Option<String>) {
     if let Some(value) = value {
         std::env::set_var(var, value);
     }
+}
+
+fn resolve_max_input_bytes(cli: &Cli) -> Result<usize> {
+    if let Some(bytes) = cli.max_input_bytes {
+        return ensure_positive(bytes, "--max-input-bytes CLI flag");
+    }
+    if let Ok(from_env) = std::env::var("LLM_GUARD_MAX_INPUT_BYTES") {
+        if !from_env.trim().is_empty() {
+            let parsed = from_env.trim().parse::<usize>().with_context(|| {
+                format!("LLM_GUARD_MAX_INPUT_BYTES must be a positive integer (got `{from_env}`)")
+            })?;
+            return ensure_positive(parsed, "LLM_GUARD_MAX_INPUT_BYTES");
+        }
+    }
+    Ok(DEFAULT_MAX_INPUT_BYTES)
+}
+
+fn ensure_positive(value: usize, source: &str) -> Result<usize> {
+    if value == 0 {
+        bail!("{source} must be greater than zero");
+    }
+    Ok(value)
 }
 
 async fn read_stream_with_limit<R>(reader: &mut R, max_bytes: usize) -> Result<String>
@@ -797,6 +866,7 @@ async fn scan_input(
                 project,
                 workspace,
             },
+        max_input_bytes,
     } = options;
 
     let repo = Arc::new(FileRuleRepository::new(rules_dir));
@@ -880,10 +950,11 @@ async fn scan_input(
             llm_client,
             Duration::from_secs(2),
             None,
+            max_input_bytes,
         )
         .await
     } else {
-        let text = read_input(file)
+        let text = read_input(file, max_input_bytes)
             .await
             .with_context(|| "failed to read input for scanning")?;
         let mut report = scanner.scan(&text).await?;
@@ -904,28 +975,28 @@ async fn scan_input(
     }
 }
 
-async fn read_input(path: Option<&Path>) -> Result<String> {
+async fn read_input(path: Option<&Path>, max_input_bytes: usize) -> Result<String> {
     if let Some(path) = path {
         let metadata = fs::metadata(path)
             .await
             .with_context(|| format!("failed to stat input file {}", path.display()))?;
-        if metadata.len() > MAX_INPUT_BYTES as u64 {
+        if metadata.len() > max_input_bytes as u64 {
             bail!(
                 "input file {} exceeds {} bytes ({} bytes on disk)",
                 path.display(),
-                MAX_INPUT_BYTES,
+                max_input_bytes,
                 metadata.len()
             );
         }
         let mut file = fs::File::open(path)
             .await
             .with_context(|| format!("failed to open input file {}", path.display()))?;
-        read_stream_with_limit(&mut file, MAX_INPUT_BYTES)
+        read_stream_with_limit(&mut file, max_input_bytes)
             .await
             .with_context(|| format!("failed to read input file {}", path.display()))
     } else {
         let mut stdin = io::stdin();
-        read_stream_with_limit(&mut stdin, MAX_INPUT_BYTES)
+        read_stream_with_limit(&mut stdin, max_input_bytes)
             .await
             .context("failed to read from stdin")
     }
@@ -938,6 +1009,7 @@ async fn tail_file(
     llm_client: Option<Arc<dyn LlmClient>>,
     poll_interval: Duration,
     max_iterations: Option<usize>,
+    max_input_bytes: usize,
 ) -> Result<i32> {
     let mut last_snapshot = String::new();
     let mut last_code = 0;
@@ -946,11 +1018,11 @@ async fn tail_file(
         let metadata = fs::metadata(path)
             .await
             .with_context(|| format!("failed to stat tailed file {}", path.display()))?;
-        if metadata.len() > MAX_INPUT_BYTES as u64 {
+        if metadata.len() > max_input_bytes as u64 {
             bail!(
                 "tailed file {} exceeds {} bytes ({} bytes on disk)",
                 path.display(),
-                MAX_INPUT_BYTES,
+                max_input_bytes,
                 metadata.len()
             );
         }
@@ -958,7 +1030,7 @@ async fn tail_file(
         let mut file = fs::File::open(path)
             .await
             .with_context(|| format!("failed to open tailed file {}", path.display()))?;
-        let contents = read_stream_with_limit(&mut file, MAX_INPUT_BYTES)
+        let contents = read_stream_with_limit(&mut file, max_input_bytes)
             .await
             .with_context(|| format!("failed to read tailed file {}", path.display()))?;
         if contents != last_snapshot {

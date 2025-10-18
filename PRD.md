@@ -206,7 +206,7 @@ To provide developers with a fast, transparent, and integrable security tool tha
 ┌─────────────────────────────────────────┐
 │     LLM Adapter (Optional)              │
 │  ┌──────────────────────────────────┐   │
-│  │ • Provider Abstraction (rig-rs)   │   │
+│  │ • Provider Abstraction (rig-rs)  │   │
 │  │ • Prompt Templates               │   │
 │  │ • Response Parsing               │   │
 │  │ • Retry / Backoff                │   │
@@ -687,6 +687,6 @@ llm-guard/
 
 **Document Control:**
 - **Author:** AI Coding Hackathon Team
-- **Reviewers:** Vignesh Mohankumar, Jason Liu (Instructirs), AI Coding Hackathon Team (cohort members)
+- **Reviewers:** Vignesh Mohankumar, Jason Liu (Instructors), AI Coding Hackathon Team (cohort members)
 - **Approval Status:** Draft
 - **Next Review:** Post-implementation
